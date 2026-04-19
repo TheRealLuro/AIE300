@@ -3,182 +3,180 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Boring API - Item Manager</title>
+    <title>Boring API</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 700px;
-            margin: 40px auto;
-            padding: 0 20px;
-            background: #f5f5f5;
-            color: #333;
+            font-family: Arial, sans-serif;
+            max-width: 650px;
+            margin: 30px auto;
+            padding: 0 15px;
+            background-color: #f0f0f0;
         }
-        h1 { margin-bottom: 24px; }
-        h2 { margin-bottom: 12px; font-size: 1.2rem; }
-
-        .card {
-            background: #fff;
-            border-radius: 8px;
-            padding: 20px;
+        h1 {
             margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-
-        form { display: flex; flex-direction: column; gap: 10px; }
+        .section {
+            background: white;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+        }
         input, textarea {
-            padding: 8px 12px;
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 8px;
             border: 1px solid #ccc;
             border-radius: 4px;
             font-size: 14px;
+            box-sizing: border-box;
         }
-        textarea { resize: vertical; min-height: 60px; }
-
+        textarea {
+            height: 60px;
+            resize: vertical;
+        }
         button {
-            padding: 8px 16px;
+            padding: 7px 14px;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
-            color: #fff;
+            font-size: 13px;
+            color: white;
         }
-        .btn-primary { background: #2563eb; }
-        .btn-primary:hover { background: #1d4ed8; }
-        .btn-danger { background: #dc2626; }
-        .btn-danger:hover { background: #b91c1c; }
-        .btn-edit { background: #f59e0b; }
-        .btn-edit:hover { background: #d97706; }
-        .btn-cancel { background: #6b7280; }
-        .btn-cancel:hover { background: #4b5563; }
+        .add-btn { background-color: #4CAF50; }
+        .add-btn:hover { background-color: #45a049; }
+        .edit-btn { background-color: #ff9800; }
+        .edit-btn:hover { background-color: #e68a00; }
+        .delete-btn { background-color: #f44336; }
+        .delete-btn:hover { background-color: #d32f2f; }
+        .save-btn { background-color: #2196F3; }
+        .save-btn:hover { background-color: #1976D2; }
+        .cancel-btn { background-color: #888; }
+        .cancel-btn:hover { background-color: #666; }
 
-        .item {
+        .item-row {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            padding: 12px 0;
+            align-items: center;
+            padding: 10px 0;
             border-bottom: 1px solid #eee;
         }
-        .item:last-child { border-bottom: none; }
-        .item-info { flex: 1; }
-        .item-info strong { font-size: 16px; }
-        .item-info p { color: #666; margin-top: 4px; font-size: 14px; }
-        .item-info .item-id { color: #999; font-size: 12px; }
-        .item-actions { display: flex; gap: 6px; margin-left: 12px; }
-
-        .edit-form { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
-        .edit-form input, .edit-form textarea { font-size: 13px; padding: 6px 8px; }
-        .edit-actions { display: flex; gap: 6px; }
-
-        .empty { color: #999; font-style: italic; padding: 12px 0; }
+        .item-row:last-child { border-bottom: none; }
+        .item-details { flex: 1; }
+        .item-details .name { font-weight: bold; }
+        .item-details .desc { color: #777; font-size: 13px; }
+        .item-details .id-label { color: #aaa; font-size: 11px; }
+        .item-buttons { display: flex; gap: 5px; }
     </style>
 </head>
 <body>
-    <h1>Boring API - Item Manager</h1>
+    <h1>Boring API - Items</h1>
 
-    <div class="card">
-        <h2>Create New Item</h2>
-        <form id="create-form">
-            <input type="text" id="item-name" placeholder="Item name (required)" required>
-            <textarea id="item-desc" placeholder="Description (optional)"></textarea>
-            <button type="submit" class="btn-primary">Add Item</button>
+    <!-- create item form -->
+    <div class="section">
+        <h3>Add New Item</h3>
+        <form id="createForm">
+            <input type="text" id="nameInput" placeholder="Name" required />
+            <textarea id="descInput" placeholder="Description (optional)"></textarea>
+            <button type="submit" class="add-btn">Add Item</button>
         </form>
     </div>
 
-    <div class="card">
-        <h2>Items</h2>
-        <div id="items-list">
-            <p class="empty">Loading...</p>
-        </div>
+    <!-- items list -->
+    <div class="section">
+        <h3>All Items</h3>
+        <div id="itemsList">Loading...</div>
     </div>
 
     <script>
-        const API = window.location.origin;
+        const API_URL = window.location.origin;
 
+        // load all items from the api and display them
         async function loadItems() {
-            const res = await fetch(`${API}/items`);
-            const items = await res.json();
-            const list = document.getElementById("items-list");
+            let response = await fetch(API_URL + "/items");
+            let data = await response.json();
+            let container = document.getElementById("itemsList");
 
-            if (items.length === 0) {
-                list.innerHTML = '<p class="empty">No items yet. Create one above!</p>';
+            if (data.length === 0) {
+                container.innerHTML = "<p style='color:#999'>No items yet, add one above!</p>";
                 return;
             }
 
-            list.innerHTML = items.map(item => `
-                <div class="item" id="item-${item.id}">
-                    <div class="item-info">
-                        <span class="item-id">#${item.id}</span>
-                        <strong>${escapeHtml(item.name)}</strong>
-                        <p>${item.description ? escapeHtml(item.description) : '<em>No description</em>'}</p>
+            let html = "";
+            for (let i = 0; i < data.length; i++) {
+                let item = data[i];
+                let descText = item.description ? item.description : "No description";
+                html += `
+                    <div class="item-row" id="item-${item.id}">
+                        <div class="item-details">
+                            <span class="id-label">#${item.id}</span>
+                            <span class="name">${item.name}</span>
+                            <div class="desc">${descText}</div>
+                        </div>
+                        <div class="item-buttons">
+                            <button class="edit-btn" onclick="editItem(${item.id}, '${item.name.replace(/'/g, "\\'")}', '${(item.description || '').replace(/'/g, "\\'")}')">Edit</button>
+                            <button class="delete-btn" onclick="deleteItem(${item.id})">Delete</button>
+                        </div>
                     </div>
-                    <div class="item-actions">
-                        <button class="btn-edit" onclick="startEdit(${item.id}, '${escapeJs(item.name)}', '${escapeJs(item.description || '')}')">Edit</button>
-                        <button class="btn-danger" onclick="deleteItem(${item.id})">Delete</button>
-                    </div>
-                </div>
-            `).join("");
+                `;
+            }
+            container.innerHTML = html;
         }
 
-        function escapeHtml(text) {
-            const d = document.createElement("div");
-            d.textContent = text;
-            return d.innerHTML;
-        }
-
-        function escapeJs(text) {
-            return text.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"');
-        }
-
-        document.getElementById("create-form").addEventListener("submit", async (e) => {
+        // handle the create form submit
+        document.getElementById("createForm").addEventListener("submit", async function(e) {
             e.preventDefault();
-            const name = document.getElementById("item-name").value.trim();
-            const description = document.getElementById("item-desc").value.trim();
-            if (!name) return;
+            let name = document.getElementById("nameInput").value.trim();
+            let desc = document.getElementById("descInput").value.trim();
 
-            await fetch(`${API}/items`, {
+            if (!name) return; // dont submit if empty
+
+            await fetch(API_URL + "/items", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, description: description || null })
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({name: name, description: desc || null})
             });
 
-            document.getElementById("item-name").value = "";
-            document.getElementById("item-desc").value = "";
+            // clear the form and reload
+            document.getElementById("nameInput").value = "";
+            document.getElementById("descInput").value = "";
             loadItems();
         });
 
+        // delete an item
         async function deleteItem(id) {
-            await fetch(`${API}/items/${id}`, { method: "DELETE" });
+            await fetch(API_URL + "/items/" + id, {method: "DELETE"});
             loadItems();
         }
 
-        function startEdit(id, name, desc) {
-            const el = document.getElementById(`item-${id}`);
-            el.innerHTML = `
-                <div class="edit-form" style="width:100%">
-                    <input type="text" id="edit-name-${id}" value="${escapeHtml(name)}" required>
-                    <textarea id="edit-desc-${id}">${escapeHtml(desc)}</textarea>
-                    <div class="edit-actions">
-                        <button class="btn-primary" onclick="saveEdit(${id})">Save</button>
-                        <button class="btn-cancel" onclick="loadItems()">Cancel</button>
-                    </div>
+        // show edit form inline
+        function editItem(id, currentName, currentDesc) {
+            let row = document.getElementById("item-" + id);
+            row.innerHTML = `
+                <div style="width:100%">
+                    <input type="text" id="editName${id}" value="${currentName}" />
+                    <textarea id="editDesc${id}">${currentDesc}</textarea>
+                    <button class="save-btn" onclick="saveItem(${id})">Save</button>
+                    <button class="cancel-btn" onclick="loadItems()">Cancel</button>
                 </div>
             `;
         }
 
-        async function saveEdit(id) {
-            const name = document.getElementById(`edit-name-${id}`).value.trim();
-            const description = document.getElementById(`edit-desc-${id}`).value.trim();
+        // save the edited item
+        async function saveItem(id) {
+            let name = document.getElementById("editName" + id).value.trim();
+            let desc = document.getElementById("editDesc" + id).value.trim();
             if (!name) return;
 
-            await fetch(`${API}/items/${id}`, {
+            await fetch(API_URL + "/items/" + id, {
                 method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, description: description || null })
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({name: name, description: desc || null})
             });
-
             loadItems();
         }
 
+        // load items when page opens
         loadItems();
     </script>
 </body>

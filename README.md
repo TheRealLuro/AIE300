@@ -1,104 +1,67 @@
-# Boring API - Item Manager
+# Boring API
+> Item manager app for AIE300. Full stack with FastAPI + PostgreSQL + Docker.
 
-A full-stack CRUD application built with FastAPI, PostgreSQL, and vanilla HTML/CSS/JS, containerized with Docker.
-
-## Database Choice
-
-**PostgreSQL** — chosen for being production-realistic, widely used, and having excellent Python support via SQLAlchemy + psycopg2. Running it as a separate Docker service also demonstrates service networking with docker-compose.
+## Database
+I went with **PostgreSQL** because its what most people use in production and it works well with SQLAlchemy. Also it runs as its own container in docker-compose which is pretty cool for learning how services talk to each other.
 
 ## How to Run
-
-### Prerequisites
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
-
-### Quick Start
-```bash
-# Clone the repo and cd into it
-git clone <your-repo-url>
-cd AIE300
-
-# Build and start the full stack
+1. Make sure Docker Desktop is installed and running
+2. Open a terminal and navigate to this project folder
+3. Run:
+```
 docker-compose up --build
 ```
+4. Go to http://localhost:8000 in your browser
 
-Open **http://localhost:8000** in your browser.
-
-### Stopping
-```bash
+To stop it:
+```
 docker-compose down
 ```
 
-Data persists across restarts thanks to the named Docker volume (`pgdata`).
-
-### Verify Persistence
-```bash
-docker-compose down
-docker-compose up
-# Your items should still be there!
-```
+Your data will still be there when you start it back up because of the docker volume.
 
 ## Architecture
-
 ```
-┌──────────────────────────────────────────────┐
-│                   Browser                    │
-│          (http://localhost:8000)              │
-└──────────────┬───────────────────────────────┘
-               │  HTTP (fetch API calls)
-               ▼
-┌──────────────────────────────────────────────┐
-│            FastAPI  (web container)           │
-│                  Port 8000                   │
-│  ┌────────────┐  ┌─────────────────────────┐ │
-│  │ Static Files│  │  REST API  (/items/*)   │ │
-│  │ index.html  │  │  SQLAlchemy ORM         │ │
-│  └────────────┘  └──────────┬──────────────┘ │
-└─────────────────────────────┼────────────────┘
-                              │  TCP :5432
-                              ▼
-               ┌──────────────────────────┐
-               │   PostgreSQL 16          │
-               │   (db container)         │
-               │   Volume: pgdata         │
-               └──────────────────────────┘
+Browser (localhost:8000)
+    |
+    | fetch() calls
+    v
+FastAPI (web container, port 8000)
+    - serves static/index.html
+    - REST API endpoints (/items)
+    - SQLAlchemy ORM
+    |
+    | port 5432
+    v
+PostgreSQL (db container)
+    - stores items in a table
+    - data saved in pgdata volume
 ```
 
-## API Endpoints
+## Endpoints
 
-| Method | Path             | Description              | Status Codes |
-|--------|------------------|--------------------------|--------------|
-| GET    | `/items`         | List all items           | 200          |
-| GET    | `/items/{id}`    | Get a single item        | 200, 404     |
-| POST   | `/items`         | Create a new item        | 201          |
-| PUT    | `/items/{id}`    | Update an existing item  | 200, 404     |
-| DELETE | `/items/{id}`    | Delete an item           | 200, 404     |
+| Method | Path | What it does |
+|--------|------|-------------|
+| GET | /items | get all items |
+| GET | /items/{id} | get one item (404 if not found) |
+| POST | /items | create a new item (returns 201) |
+| PUT | /items/{id} | update an item (404 if not found) |
+| DELETE | /items/{id} | delete an item (404 if not found) |
 
-### Item Schema
-
-**Request body** (POST / PUT):
+Item body for POST/PUT:
 ```json
 {
-  "name": "string (required)",
-  "description": "string (optional)"
-}
-```
-
-**Response body**:
-```json
-{
-  "id": 1,
-  "name": "string",
-  "description": "string or null"
+  "name": "something",
+  "description": "optional"
 }
 ```
 
 ## Screenshot
-
-> *(Add a screenshot of the running app here)*
+*(add screenshot here)*
 
 ## Tech Stack
-
-- **Backend**: Python 3.11, FastAPI, SQLAlchemy, psycopg2-binary
-- **Database**: PostgreSQL 16
-- **Frontend**: Vanilla HTML, CSS, JavaScript
-- **Infrastructure**: Docker, docker-compose
+- Python 3.11 / FastAPI
+- PostgreSQL 16
+- SQLAlchemy + psycopg2
+- HTML/CSS/JS (no frameworks)
+- Docker + docker-compose
