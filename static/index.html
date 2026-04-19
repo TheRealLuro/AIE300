@@ -7,76 +7,127 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 650px;
-            margin: 30px auto;
-            padding: 0 15px;
-            background-color: #f0f0f0;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 30px 20px;
+            background-color: #eef1f5;
+            color: #222;
         }
         h1 {
-            margin-bottom: 20px;
+            font-size: 28px;
+            margin-bottom: 6px;
+        }
+        .subtitle {
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 24px;
         }
         .section {
             background: white;
-            padding: 20px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+            padding: 22px;
+            border-radius: 8px;
+            margin-bottom: 18px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+        .section h3 {
+            margin-top: 0;
+            margin-bottom: 14px;
+            font-size: 16px;
         }
         input, textarea {
             width: 100%;
-            padding: 8px;
-            margin-bottom: 8px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #d0d0d0;
+            border-radius: 5px;
             font-size: 14px;
             box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #4CAF50;
         }
         textarea {
-            height: 60px;
+            height: 65px;
             resize: vertical;
         }
         button {
-            padding: 7px 14px;
+            padding: 8px 16px;
             border: none;
-            border-radius: 4px;
+            border-radius: 5px;
             cursor: pointer;
             font-size: 13px;
             color: white;
+            transition: opacity 0.2s;
         }
+        button:hover { opacity: 0.85; }
         .add-btn { background-color: #4CAF50; }
-        .add-btn:hover { background-color: #45a049; }
         .edit-btn { background-color: #ff9800; }
-        .edit-btn:hover { background-color: #e68a00; }
         .delete-btn { background-color: #f44336; }
-        .delete-btn:hover { background-color: #d32f2f; }
         .save-btn { background-color: #2196F3; }
-        .save-btn:hover { background-color: #1976D2; }
         .cancel-btn { background-color: #888; }
-        .cancel-btn:hover { background-color: #666; }
 
         .item-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid #eee;
+            padding: 12px 14px;
+            margin-bottom: 8px;
+            background: #fafafa;
+            border-radius: 6px;
+            border: 1px solid #eee;
         }
-        .item-row:last-child { border-bottom: none; }
         .item-details { flex: 1; }
-        .item-details .name { font-weight: bold; }
-        .item-details .desc { color: #777; font-size: 13px; }
-        .item-details .id-label { color: #aaa; font-size: 11px; }
-        .item-buttons { display: flex; gap: 5px; }
+        .item-details .name {
+            font-weight: bold;
+            font-size: 15px;
+        }
+        .item-details .desc {
+            color: #777;
+            font-size: 13px;
+            margin-top: 3px;
+        }
+        .item-details .id-label {
+            color: #bbb;
+            font-size: 10px;
+            font-family: monospace;
+        }
+        .item-buttons { display: flex; gap: 6px; margin-left: 10px; }
+
+        .empty-msg {
+            color: #aaa;
+            font-style: italic;
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        /* edit form inside an item row */
+        .edit-inline { width: 100%; }
+        .edit-inline input, .edit-inline textarea {
+            margin-bottom: 8px;
+        }
+        .edit-inline .edit-buttons {
+            display: flex;
+            gap: 6px;
+        }
+
+        .item-count {
+            font-size: 13px;
+            color: #999;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
-    <h1>Boring API - Items</h1>
+    <h1>Boring API</h1>
+    <p class="subtitle">Simple item manager for AIE300</p>
 
     <!-- create item form -->
     <div class="section">
         <h3>Add New Item</h3>
         <form id="createForm">
-            <input type="text" id="nameInput" placeholder="Name" required />
+            <input type="text" id="nameInput" placeholder="Item name" required />
             <textarea id="descInput" placeholder="Description (optional)"></textarea>
             <button type="submit" class="add-btn">Add Item</button>
         </form>
@@ -85,6 +136,7 @@
     <!-- items list -->
     <div class="section">
         <h3>All Items</h3>
+        <div id="itemCount" class="item-count"></div>
         <div id="itemsList">Loading...</div>
     </div>
 
@@ -96,11 +148,15 @@
             let response = await fetch(API_URL + "/items");
             let data = await response.json();
             let container = document.getElementById("itemsList");
+            let countEl = document.getElementById("itemCount");
 
             if (data.length === 0) {
-                container.innerHTML = "<p style='color:#999'>No items yet, add one above!</p>";
+                countEl.textContent = "";
+                container.innerHTML = '<p class="empty-msg">No items yet, add one above!</p>';
                 return;
             }
+
+            countEl.textContent = data.length + " item" + (data.length === 1 ? "" : "s");
 
             let html = "";
             for (let i = 0; i < data.length; i++) {
@@ -110,7 +166,7 @@
                 html += `
                     <div class="item-row" id="item-${item.id}">
                         <div class="item-details">
-                            <span class="id-label">${item.id}</span>
+                            <div class="id-label">${item.id}</div>
                             <span class="name">${item.name}</span>
                             <div class="desc">${descText}</div>
                         </div>
@@ -154,11 +210,13 @@
         function editItem(id, currentName, currentDesc) {
             let row = document.getElementById("item-" + id);
             row.innerHTML = `
-                <div style="width:100%">
+                <div class="edit-inline">
                     <input type="text" id="editName-${id}" value="${currentName}" />
                     <textarea id="editDesc-${id}">${currentDesc}</textarea>
-                    <button class="save-btn" onclick="saveItem('${id}')">Save</button>
-                    <button class="cancel-btn" onclick="loadItems()">Cancel</button>
+                    <div class="edit-buttons">
+                        <button class="save-btn" onclick="saveItem('${id}')">Save</button>
+                        <button class="cancel-btn" onclick="loadItems()">Cancel</button>
+                    </div>
                 </div>
             `;
         }

@@ -2,7 +2,7 @@
 > Item manager app for AIE300. Full stack with FastAPI + MongoDB + Docker.
 
 ## Database
-I went with **MongoDB** because I prefer working with it over SQL databases. Its document-based which makes it easy to store items without worrying about schemas and migrations. Also pymongo is super straightforward to use with FastAPI.
+I went with **MongoDB** because I prefer working with it over SQL databases. Its document-based which makes it easy to store items without worrying about schemas and migrations. Also pymongo is super straightforward to use with FastAPI. (Ive used it the most, between classes and personal projects.)
 
 ## How to Run
 1. Make sure Docker Desktop is installed and running
@@ -18,7 +18,7 @@ To stop it:
 docker-compose down
 ```
 
-Your data will still be there when you start it back up because of the docker volume.
+Your data will still be there when you start it back up because of the docker volume. 
 
 ## Architecture
 ```
