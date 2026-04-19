@@ -1,8 +1,8 @@
 # Boring API
-> Item manager app for AIE300. Full stack with FastAPI + PostgreSQL + Docker.
+> Item manager app for AIE300. Full stack with FastAPI + MongoDB + Docker.
 
 ## Database
-I went with **PostgreSQL** because its what most people use in production and it works well with SQLAlchemy. Also it runs as its own container in docker-compose which is pretty cool for learning how services talk to each other.
+I went with **MongoDB** because I prefer working with it over SQL databases. Its document-based which makes it easy to store items without worrying about schemas and migrations. Also pymongo is super straightforward to use with FastAPI.
 
 ## How to Run
 1. Make sure Docker Desktop is installed and running
@@ -29,13 +29,13 @@ Browser (localhost:8000)
 FastAPI (web container, port 8000)
     - serves static/index.html
     - REST API endpoints (/items)
-    - SQLAlchemy ORM
+    - pymongo driver
     |
-    | port 5432
+    | port 27017
     v
-PostgreSQL (db container)
-    - stores items in a table
-    - data saved in pgdata volume
+MongoDB (db container)
+    - stores items as documents
+    - data saved in mongodata volume
 ```
 
 ## Endpoints
@@ -48,6 +48,8 @@ PostgreSQL (db container)
 | PUT | /items/{id} | update an item (404 if not found) |
 | DELETE | /items/{id} | delete an item (404 if not found) |
 
+Note: item ids are MongoDB ObjectId hex strings (like `6789abc...`), not integers.
+
 Item body for POST/PUT:
 ```json
 {
@@ -56,12 +58,10 @@ Item body for POST/PUT:
 }
 ```
 
-## Screenshot
-*(add screenshot here)*
 
 ## Tech Stack
 - Python 3.11 / FastAPI
-- PostgreSQL 16
-- SQLAlchemy + psycopg2
+- MongoDB 7
+- pymongo
 - HTML/CSS/JS (no frameworks)
 - Docker + docker-compose

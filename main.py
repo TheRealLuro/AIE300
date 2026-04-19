@@ -1,10 +1,10 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
-from sqlalchemy.orm import Session
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from db import ItemModel, init_db, get_db
+from bson import ObjectId
+from db import items_collection
 
 app = FastAPI(title="Boring API")
 
@@ -24,64 +24,74 @@ class ItemCreate(BaseModel):
 
 # pydantic model for returning items (includes the id)
 class ItemRead(BaseModel):
-    id: int
+    id: str
     name: str
     description: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-
-# make the tables when the app starts up
-@app.on_event("startup")
-def on_startup():
-    init_db()
+# helper to turn a mongo document into our ItemRead format
+def item_to_dict(item):
+    return {
+        "id": str(item["_id"]),
+        "name": item["name"],
+        "description": item.get("description")
+    }
 
 
 # --- CRUD routes ---
 
 # get all items
 @app.get("/items", response_model=List[ItemRead])
-def get_items(db: Session = Depends(get_db)):
-    items = db.query(ItemModel).all()
+def get_items():
+    items = []
+    for item in items_collection.find():
+        items.append(item_to_dict(item))
     return items
 
 # get one item by id
 @app.get("/items/{item_id}", response_model=ItemRead)
-def get_item(item_id: int, db: Session = Depends(get_db)):
-    item = db.query(ItemModel).filter(ItemModel.id == item_id).first()
+def get_item(item_id: str):
+    try:
+        item = items_collection.find_one({"_id": ObjectId(item_id)})
+    except:
+        raise HTTPException(status_code=404, detail="Item not found")
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
-    return item
+    return item_to_dict(item)
 
 # create a new item
 @app.post("/items", response_model=ItemRead, status_code=201)
-def create_item(item: ItemCreate, db: Session = Depends(get_db)):
-    new_item = ItemModel(name=item.name, description=item.description)
-    db.add(new_item)
-    db.commit()
-    db.refresh(new_item)
-    return new_item
+def create_item(item: ItemCreate):
+    new_item = {"name": item.name, "description": item.description}
+    result = items_collection.insert_one(new_item)
+    new_item["_id"] = result.inserted_id
+    return item_to_dict(new_item)
 
 # update an existing item
 @app.put("/items/{item_id}", response_model=ItemRead)
-def update_item(item_id: int, item: ItemCreate, db: Session = Depends(get_db)):
-    existing = db.query(ItemModel).filter(ItemModel.id == item_id).first()
-    if existing is None:
+def update_item(item_id: str, item: ItemCreate):
+    try:
+        oid = ObjectId(item_id)
+    except:
         raise HTTPException(status_code=404, detail="Item not found")
-    existing.name = item.name
-    existing.description = item.description
-    db.commit()
-    db.refresh(existing)
-    return existing
+    result = items_collection.update_one(
+        {"_id": oid},
+        {"$set": {"name": item.name, "description": item.description}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
+    updated = items_collection.find_one({"_id": oid})
+    return item_to_dict(updated)
 
 # delete an item
 @app.delete("/items/{item_id}")
-def delete_item(item_id: int, db: Session = Depends(get_db)):
-    existing = db.query(ItemModel).filter(ItemModel.id == item_id).first()
-    if existing is None:
+def delete_item(item_id: str):
+    try:
+        oid = ObjectId(item_id)
+    except:
         raise HTTPException(status_code=404, detail="Item not found")
-    db.delete(existing)
-    db.commit()
+    result = items_collection.delete_one({"_id": oid})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
     return {"detail": "Item deleted"}
 
 

@@ -1,22 +1,18 @@
 version: "3.8"
 services:
   db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: items
+    image: mongo:7
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - mongodata:/data/db
 
   web:
     build: .
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/items
+      MONGO_URL: mongodb://db:27017
     depends_on:
       - db
 
 volumes:
-  pgdata:
+  mongodata:

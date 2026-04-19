@@ -106,16 +106,17 @@
             for (let i = 0; i < data.length; i++) {
                 let item = data[i];
                 let descText = item.description ? item.description : "No description";
+                // mongo ids are long hex strings so we pass them as strings
                 html += `
                     <div class="item-row" id="item-${item.id}">
                         <div class="item-details">
-                            <span class="id-label">#${item.id}</span>
+                            <span class="id-label">${item.id}</span>
                             <span class="name">${item.name}</span>
                             <div class="desc">${descText}</div>
                         </div>
                         <div class="item-buttons">
-                            <button class="edit-btn" onclick="editItem(${item.id}, '${item.name.replace(/'/g, "\\'")}', '${(item.description || '').replace(/'/g, "\\'")}')">Edit</button>
-                            <button class="delete-btn" onclick="deleteItem(${item.id})">Delete</button>
+                            <button class="edit-btn" onclick="editItem('${item.id}', '${item.name.replace(/'/g, "\\'")}', '${(item.description || '').replace(/'/g, "\\'")}')">Edit</button>
+                            <button class="delete-btn" onclick="deleteItem('${item.id}')">Delete</button>
                         </div>
                     </div>
                 `;
@@ -154,9 +155,9 @@
             let row = document.getElementById("item-" + id);
             row.innerHTML = `
                 <div style="width:100%">
-                    <input type="text" id="editName${id}" value="${currentName}" />
-                    <textarea id="editDesc${id}">${currentDesc}</textarea>
-                    <button class="save-btn" onclick="saveItem(${id})">Save</button>
+                    <input type="text" id="editName-${id}" value="${currentName}" />
+                    <textarea id="editDesc-${id}">${currentDesc}</textarea>
+                    <button class="save-btn" onclick="saveItem('${id}')">Save</button>
                     <button class="cancel-btn" onclick="loadItems()">Cancel</button>
                 </div>
             `;
@@ -164,8 +165,8 @@
 
         // save the edited item
         async function saveItem(id) {
-            let name = document.getElementById("editName" + id).value.trim();
-            let desc = document.getElementById("editDesc" + id).value.trim();
+            let name = document.getElementById("editName-" + id).value.trim();
+            let desc = document.getElementById("editDesc-" + id).value.trim();
             if (!name) return;
 
             await fetch(API_URL + "/items/" + id, {
