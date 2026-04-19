@@ -1,56 +1,84 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List
+from sqlalchemy.orm import Session
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Boring API ")
+from db import ItemModel, init_db, get_db
 
-# Pydantic model
-class Item(BaseModel):
+app = FastAPI(title="Boring API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class ItemCreate(BaseModel):
     name: str
     description: Optional[str] = None
-    price: float
-    quantity: int
 
 
-items_db: dict[int, dict] = {}
-next_id: int = 1
+class ItemRead(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
 
-@app.get("/items", response_model=List[Item])
-def get_items():
-    return list(items_db.values())
+    class Config:
+        from_attributes = True
 
 
-@app.get("/items/{item_id}", response_model=Item)
-def get_item(item_id: int):
-    if item_id not in items_db:
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
+
+@app.get("/items", response_model=List[ItemRead])
+def get_items(db: Session = Depends(get_db)):
+    return db.query(ItemModel).all()
+
+
+@app.get("/items/{item_id}", response_model=ItemRead)
+def get_item(item_id: int, db: Session = Depends(get_db)):
+    item = db.query(ItemModel).filter(ItemModel.id == item_id).first()
+    if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    return items_db[item_id]
+    return item
 
 
-@app.post("/create_item", response_model=Item, status_code=201)
-def create_item(item: Item):
-    global next_id
-    item_id = next_id
-    next_id += 1
-    item_dict = item.dict()
-    item_dict["id"] = item_id
-    items_db[item_id] = item_dict
-    return item_dict
+@app.post("/items", response_model=ItemRead, status_code=201)
+def create_item(item: ItemCreate, db: Session = Depends(get_db)):
+    db_item = ItemModel(name=item.name, description=item.description)
+    db.add(db_item)
+    db.commit()
+    db.refresh(db_item)
+    return db_item
 
 
-@app.put("/update_item/{item_id}", response_model=Item)
-def update_item(item_id: int, updated_item: Item):
-    if item_id not in items_db:
+@app.put("/items/{item_id}", response_model=ItemRead)
+def update_item(item_id: int, item: ItemCreate, db: Session = Depends(get_db)):
+    db_item = db.query(ItemModel).filter(ItemModel.id == item_id).first()
+    if not db_item:
         raise HTTPException(status_code=404, detail="Item not found")
-    item_dict = updated_item.dict()
-    item_dict["id"] = item_id
-    items_db[item_id] = item_dict
-    return item_dict
+    db_item.name = item.name
+    db_item.description = item.description
+    db.commit()
+    db.refresh(db_item)
+    return db_item
 
 
-@app.delete("/delete_item/{item_id}", status_code=200)
-def delete_item(item_id: int):
-    if item_id not in items_db:
+@app.delete("/items/{item_id}")
+def delete_item(item_id: int, db: Session = Depends(get_db)):
+    db_item = db.query(ItemModel).filter(ItemModel.id == item_id).first()
+    if not db_item:
         raise HTTPException(status_code=404, detail="Item not found")
-    del items_db[item_id]
+    db.delete(db_item)
+    db.commit()
     return {"detail": "Item deleted successfully"}
+
+
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
