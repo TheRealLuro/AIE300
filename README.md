@@ -69,3 +69,80 @@ Item body for POST/PUT:
 - pymongo
 - HTML/CSS/JS (no frameworks)
 - Docker + docker-compose
+
+
+# -----------------------------------------------------------------------------------------------------
+## Flower predictor
+
+Same setup as the item manager stuff, except this part uses PyTorch + a neural network to predict iris flowers. The page to test it is:
+
+http://localhost:8000/predict-page
+
+I used the Iris dataset from sklearn because its simple, works well for classification, and was good for learning how PyTorch training/inference works without making the project super overcomplicated.
+
+The model predicts between all 3 flower classes:
+
+- setosa  
+- versicolor  
+- virginica  
+
+The neural network was built using PyTorch with:
+- multiple linear layers
+- ReLU activation functions
+- CrossEntropyLoss
+- Adam optimizer
+- DataLoader batching
+
+I also used a StandardScaler so the feature values are normalized before training/inference. The model trains on startup if there isnt already a saved model file, otherwise it just loads the existing trained model.
+
+---
+
+### API Endpoint
+
+| Method | Path | What it does |
+|--------|------|-------------|
+| POST | /predict | predicts flower type from 4 float inputs |
+
+---
+
+### Example Request
+
+```json
+{
+  "features": [5.1, 3.5, 1.4, 0.2]
+}
+```
+
+### Example Response
+{
+  "prediction": "setosa",
+  "confidence": 0.9987,
+  "probabilities": {
+    "setosa": 0.9987,
+    "versicolor": 0.0011,
+    "virginica": 0.0002
+  }
+}
+
+## What the model uses
+- train/test split
+- DataLoader batching
+- autograd/backpropagation
+model saving/loading with torch.save
+model.eval() and torch.no_grad() during inference
+PyTorch basics section
+
+I also included a separate script that demonstrates: ( pytorch_basics.py)
+
+- tensor creation
+- tensor math
+- matrix multiplication
+- autograd gradients
+
+# Swagger docs for testing:
+
+> http://localhost:8000/docs
+
+You can test predictions there directly or use the frontend prediction page. (http://localhost:8000/predict-page)
+
+

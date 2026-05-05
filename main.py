@@ -5,9 +5,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from bson import ObjectId
 from db import items_collection
+from neural_network import ModelService
+from fastapi.responses import FileResponse
 
 app = FastAPI(title="Boring API")
-
+nn_service = ModelService()
 # need this so the frontend can talk to the api
 app.add_middleware(
     CORSMiddleware,
@@ -28,6 +30,10 @@ class ItemRead(BaseModel):
     name: str
     description: Optional[str] = None
 
+class PredictionRequest(BaseModel): 
+    features: list[float]
+
+
 # helper to turn a mongo document into our ItemRead format
 def item_to_dict(item):
     return {
@@ -36,6 +42,17 @@ def item_to_dict(item):
         "description": item.get("description")
     }
 
+@app.get("/predict-page")
+def predict_page():
+    return FileResponse("static/predict.html")
+
+
+@app.post("/predict")
+def predict(req: PredictionRequest):
+
+    result = nn_service.predict(req.features)
+
+    return result
 
 # --- CRUD routes ---
 
@@ -97,4 +114,4 @@ def delete_item(item_id: str):
 
 # serve the frontend html - this has to be AFTER the api routes
 # or else it will catch everything
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
