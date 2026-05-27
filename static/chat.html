@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Boring API - AI Chat</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+    body { background: #eef1f5; color: #222; padding: 20px; }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 24px; margin-bottom: 4px; }
+    .subtitle { color: #888; font-size: 13px; margin-bottom: 18px; }
+    .nav { font-size: 13px; margin-bottom: 14px; }
+    .nav a { color: #2563eb; text-decoration: none; margin-right: 12px; }
+    .nav a:hover { text-decoration: underline; }
+
+    .card { background: white; border-radius: 10px; padding: 18px;
+            margin-bottom: 18px; box-shadow: 0 2px 6px rgba(0,0,0,0.07); }
+    .card h3 { margin-bottom: 12px; font-size: 16px; }
+
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+                font-size: 13px; }
+    .controls label { color: #555; }
+    .controls select, .controls button {
+      padding: 6px 10px; border: 1px solid #ccc; border-radius: 5px;
+      background: white; font-size: 13px;
+    }
+    .controls button { background: #6b7280; color: white; border: none; cursor: pointer; }
+    .controls button:hover { background: #4b5563; }
+
+    /* chat area */
+    #messages {
+      height: 380px; overflow-y: auto; border: 1px solid #e5e7eb;
+      border-radius: 8px; padding: 12px; background: #fafafa;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .msg { max-width: 78%; padding: 9px 13px; border-radius: 14px;
+           font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; }
+    .msg.user { align-self: flex-end; background: #2563eb; color: white;
+                border-bottom-right-radius: 4px; }
+    .msg.assistant { align-self: flex-start; background: #e5e7eb; color: #111;
+                     border-bottom-left-radius: 4px; }
+    .msg.system-note { align-self: center; background: transparent;
+                       color: #999; font-size: 12px; font-style: italic; padding: 4px; }
+    .msg.error { align-self: center; background: #fee2e2; color: #991b1b;
+                 font-size: 13px; }
+    .typing { align-self: flex-start; color: #888; font-size: 13px; font-style: italic; }
+
+    .composer { display: flex; gap: 8px; margin-top: 12px; }
+    .composer input { flex: 1; padding: 10px; border: 1px solid #ccc;
+                      border-radius: 6px; font-size: 14px; }
+    .composer button { padding: 10px 18px; background: #4CAF50; color: white;
+                       border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    .composer button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* analyze panel */
+    #analyzeInput { width: 100%; height: 80px; padding: 10px;
+                    border: 1px solid #ccc; border-radius: 6px; font-size: 14px;
+                    resize: vertical; font-family: inherit; }
+    .analyze-btn { margin-top: 8px; padding: 8px 16px; background: #2563eb;
+                   color: white; border: none; border-radius: 6px; cursor: pointer; }
+    .analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    #analyzeResult { margin-top: 12px; font-size: 13px; }
+    .badge { display: inline-block; background: #2563eb; color: white;
+             padding: 3px 9px; border-radius: 999px; margin: 2px 4px 2px 0; font-size: 12px; }
+    .badge.tag { background: #6b7280; }
+    .badge.sent-positive { background: #16a34a; }
+    .badge.sent-negative { background: #dc2626; }
+    .badge.sent-neutral  { background: #6b7280; }
+    .field-label { color: #666; font-size: 12px; margin-top: 8px; display: block; }
+    pre.raw { background: #1f2937; color: #e5e7eb; padding: 10px;
+              border-radius: 6px; overflow-x: auto; font-size: 12px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>AI Chat</h1>
+    <p class="subtitle">Ask the in-app assistant about items or the flower predictor.</p>
+    <div class="nav">
+      <a href="/static/index.html">Items</a>
+      <a href="/predict-page">Flower Predictor</a>
+      <a href="/docs">API Docs</a>
+    </div>
+
+    <!-- model picker -->
+    <div class="card">
+      <h3>Model</h3>
+      <div class="controls">
+        <label>Provider:</label>
+        <select id="providerSelect"></select>
+        <label>Model:</label>
+        <select id="modelSelect"></select>
+        <button id="resetBtn" type="button">Reset conversation</button>
+      </div>
+    </div>
+
+    <!-- chat -->
+    <div class="card">
+      <h3>Chat</h3>
+      <div id="messages"></div>
+      <form class="composer" id="composer">
+        <input type="text" id="userInput" placeholder="Type a message..." autocomplete="off" />
+        <button type="submit" id="sendBtn">Send</button>
+      </form>
+    </div>
+
+    <!-- analyze -->
+    <div class="card">
+      <h3>Analyze item description</h3>
+      <p style="font-size:12px;color:#888;margin-bottom:8px;">
+        Paste an item description and the LLM will return structured JSON
+        (categories, tags, sentiment, summary). Uses the same provider/model selected above.
+      </p>
+      <textarea id="analyzeInput" placeholder='e.g. "Wireless mouse, very responsive and great battery life."'></textarea>
+      <button class="analyze-btn" id="analyzeBtn" type="button">Analyze</button>
+      <div id="analyzeResult"></div>
+    </div>
+  </div>
+
+<script>
+const API = window.location.origin;
+
+let history = [];          // [{role, content}]
+let catalog = null;        // /llm/models response
+let currentProvider = null;
+let currentModel = null;
+
+const $providers = document.getElementById("providerSelect");
+const $models    = document.getElementById("modelSelect");
+const $messages  = document.getElementById("messages");
+const $input     = document.getElementById("userInput");
+const $sendBtn   = document.getElementById("sendBtn");
+
+// --- model picker ---
+async function loadModels() {
+  const res = await fetch(API + "/llm/models");
+  catalog = await res.json();
+  currentProvider = catalog.default_provider;
+
+  $providers.innerHTML = "";
+  for (const [key, info] of Object.entries(catalog.providers)) {
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = info.label;
+    if (key === currentProvider) opt.selected = true;
+    $providers.appendChild(opt);
+  }
+  refreshModels();
+}
+
+function refreshModels() {
+  currentProvider = $providers.value;
+  const info = catalog.providers[currentProvider];
+  $models.innerHTML = "";
+  for (const m of info.models) {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = m;
+    if (m === info.default) opt.selected = true;
+    $models.appendChild(opt);
+  }
+  currentModel = info.default;
+}
+
+$providers.addEventListener("change", () => {
+  refreshModels();
+  addSystemNote(`Switched to ${currentProvider} / ${currentModel}`);
+});
+$models.addEventListener("change", () => {
+  currentModel = $models.value;
+  addSystemNote(`Model: ${currentModel}`);
+});
+
+// --- chat rendering ---
+function addMessage(role, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.textContent = text;
+  $messages.appendChild(div);
+  $messages.scrollTop = $messages.scrollHeight;
+  return div;
+}
+function addSystemNote(text) {
+  const div = document.createElement("div");
+  div.className = "msg system-note";
+  div.textContent = text;
+  $messages.appendChild(div);
+  $messages.scrollTop = $messages.scrollHeight;
+}
+function addError(text) {
+  const div = document.createElement("div");
+  div.className = "msg error";
+  div.textContent = "Error: " + text;
+  $messages.appendChild(div);
+  $messages.scrollTop = $messages.scrollHeight;
+}
+
+document.getElementById("composer").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = $input.value.trim();
+  if (!text) return;
+
+  $input.value = "";
+  $sendBtn.disabled = true;
+  addMessage("user", text);
+
+  const typing = document.createElement("div");
+  typing.className = "typing";
+  typing.textContent = "Assistant is typing...";
+  $messages.appendChild(typing);
+  $messages.scrollTop = $messages.scrollHeight;
+
+  try {
+    const res = await fetch(API + "/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: text,
+        conversation_history: history,
+        provider: $providers.value,
+        model: $models.value,
+      }),
+    });
+    typing.remove();
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      addError(err.detail || ("HTTP " + res.status));
+    } else {
+      const data = await res.json();
+      history = data.conversation_history;
+      addMessage("assistant", data.reply);
+    }
+  } catch (err) {
+    typing.remove();
+    addError(err.message || "request failed");
+  } finally {
+    $sendBtn.disabled = false;
+    $input.focus();
+  }
+});
+
+document.getElementById("resetBtn").addEventListener("click", () => {
+  history = [];
+  $messages.innerHTML = "";
+  addSystemNote("Conversation reset.");
+});
+
+// --- analyze panel ---
+document.getElementById("analyzeBtn").addEventListener("click", async () => {
+  const content = document.getElementById("analyzeInput").value.trim();
+  const $result = document.getElementById("analyzeResult");
+  const $btn = document.getElementById("analyzeBtn");
+  if (!content) {
+    $result.innerHTML = '<div style="color:#888;">Enter something to analyze first.</div>';
+    return;
+  }
+  $btn.disabled = true;
+  $result.innerHTML = '<div style="color:#888;">Analyzing...</div>';
+
+  try {
+    const res = await fetch(API + "/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content,
+        provider: $providers.value,
+        model: $models.value,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      $result.innerHTML = `<div style="color:#dc2626;">Error: ${err.detail || res.status}</div>`;
+    } else {
+      const data = await res.json();
+      $result.innerHTML = renderAnalysis(data);
+    }
+  } catch (err) {
+    $result.innerHTML = `<div style="color:#dc2626;">Error: ${err.message}</div>`;
+  } finally {
+    $btn.disabled = false;
+  }
+});
+
+function renderAnalysis(data) {
+  const cats = (data.categories || []).map(c => `<span class="badge">${c}</span>`).join("");
+  const tags = (data.tags || []).map(t => `<span class="badge tag">${t}</span>`).join("");
+  const sentClass = "sent-" + (data.sentiment || "neutral");
+  return `
+    <span class="field-label">Categories</span><div>${cats || "<em>none</em>"}</div>
+    <span class="field-label">Tags</span><div>${tags || "<em>none</em>"}</div>
+    <span class="field-label">Sentiment</span>
+      <div><span class="badge ${sentClass}">${data.sentiment}</span></div>
+    <span class="field-label">Summary</span><div>${data.summary || ""}</div>
+    <pre class="raw">${JSON.stringify(data, null, 2)}</pre>
+  `;
+}
+
+loadModels().then(() => addSystemNote("Pick a provider/model above and start chatting."));
+</script>
+</body>
+</html>

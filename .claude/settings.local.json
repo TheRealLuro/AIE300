@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile main.py llm_service.py test_llm.py adding_feat.py)"
+    ]
+  }
+}

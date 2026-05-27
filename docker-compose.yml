@@ -7,9 +7,15 @@ services:
   web:
     build: .
     ports:
-      - "8000:8000"
+      - "9878:8000"
     environment:
       MONGO_URL: mongodb://db:27017
+      # Pulled from .env on the host; never bake real keys into the image.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEFAULT_LLM_PROVIDER: ${DEFAULT_LLM_PROVIDER:-openai}
+      # If you run Ollama on the host machine, use host.docker.internal.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     depends_on:
       - db
 

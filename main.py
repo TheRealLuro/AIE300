@@ -7,6 +7,7 @@ from bson import ObjectId
 from db import items_collection
 from neural_network import ModelService
 from fastapi.responses import FileResponse
+import llm_service
 
 app = FastAPI(title="Boring API")
 nn_service = ModelService()
@@ -30,7 +31,7 @@ class ItemRead(BaseModel):
     name: str
     description: Optional[str] = None
 
-class PredictionRequest(BaseModel): 
+class PredictionRequest(BaseModel):
     features: list[float]
 
 
@@ -45,6 +46,10 @@ def item_to_dict(item):
 @app.get("/predict-page")
 def predict_page():
     return FileResponse("static/predict.html")
+
+@app.get("/chat-page")
+def chat_page():
+    return FileResponse("static/chat.html")
 
 
 @app.post("/predict")
@@ -110,6 +115,139 @@ def delete_item(item_id: str):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Item not found")
     return {"detail": "Item deleted"}
+
+
+# --- LLM routes ---
+
+CHAT_SYSTEM_PROMPT = (
+    "You are the in-app assistant for Boring API, a small item-manager and "
+    "iris-flower-prediction tool. You help the user manage their items "
+    "(create/edit/delete), explain what fields mean, and answer questions "
+    "about the flower predictor (sepal/petal measurements, the three iris "
+    "classes: setosa, versicolor, virginica). Be concise, friendly, and "
+    "answer in 1-3 short paragraphs unless the user asks for more detail. "
+    "If a question is unrelated to the app, answer briefly and steer back."
+)
+
+ANALYZE_SYSTEM_PROMPT = """You are a data analysis assistant for an item-manager app.
+Given an item description, return ONLY a JSON object in this exact shape:
+{
+  "categories": ["category1", "category2"],
+  "tags": ["tag1", "tag2", "tag3"],
+  "sentiment": "positive" | "negative" | "neutral",
+  "summary": "one sentence summary"
+}
+Rules:
+- 1-3 broad categories (e.g. "electronics", "kitchen", "book", "tool", "clothing").
+- 3-6 short lowercase tags (single words or short phrases).
+- sentiment reflects the tone of the description text itself.
+- summary is one sentence, under 20 words.
+- Output JSON only. No prose, no markdown fences."""
+
+ANALYZE_FEW_SHOT = """Example 1:
+Input: "Brand new noise-cancelling headphones, sound is crisp and battery lasts 30 hours. Worth every penny."
+Output: {"categories": ["electronics", "audio"], "tags": ["headphones", "noise-cancelling", "battery", "review"], "sentiment": "positive", "summary": "Highly positive review of long-battery noise-cancelling headphones."}
+
+Example 2:
+Input: "Cheap plastic spatula, melted on the first use. Returning it."
+Output: {"categories": ["kitchen", "utensil"], "tags": ["spatula", "plastic", "defective", "return"], "sentiment": "negative", "summary": "Negative review of a spatula that melted on first use."}
+
+Now analyze this:
+"""
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    conversation_history: List[ChatMessage] = []
+    provider: Optional[str] = None
+    model: Optional[str] = None
+
+class ChatResponse(BaseModel):
+    reply: str
+    conversation_history: List[ChatMessage]
+    provider: str
+    model: str
+
+class AnalyzeRequest(BaseModel):
+    content: str
+    provider: Optional[str] = None
+    model: Optional[str] = None
+
+
+@app.get("/llm/models")
+def list_models():
+    """Tells the frontend which providers/models are available for the dropdown."""
+    return {
+        "default_provider": llm_service.DEFAULT_PROVIDER,
+        "providers": llm_service.MODEL_CATALOG,
+    }
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(request: ChatRequest):
+    messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
+    messages.extend([m.model_dump() for m in request.conversation_history])
+    messages.append({"role": "user", "content": request.message})
+
+    try:
+        provider = llm_service.get_provider(request.provider)
+        model = llm_service.resolve_model(provider.name, request.model)
+        reply = provider.chat(messages, model, max_tokens=512, temperature=0.7)
+    except llm_service.LLMError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"LLM provider failed: {e}")
+
+    updated = request.conversation_history + [
+        ChatMessage(role="user", content=request.message),
+        ChatMessage(role="assistant", content=reply),
+    ]
+    return ChatResponse(
+        reply=reply,
+        conversation_history=updated,
+        provider=provider.name,
+        model=model,
+    )
+
+
+@app.post("/analyze")
+def analyze(request: AnalyzeRequest):
+    if not request.content.strip():
+        raise HTTPException(status_code=400, detail="content must not be empty")
+
+    user_prompt = ANALYZE_FEW_SHOT + request.content
+
+    try:
+        result = llm_service.complete_json(
+            system=ANALYZE_SYSTEM_PROMPT,
+            user=user_prompt,
+            provider=request.provider,
+            model=request.model,
+            max_tokens=400,
+        )
+    except llm_service.LLMError as e:
+        # 422 = the LLM returned something we can't parse; client can retry.
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"LLM provider failed: {e}")
+
+    required = ["categories", "tags", "sentiment", "summary"]
+    missing = [f for f in required if f not in result]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"LLM response is missing required fields: {missing}",
+        )
+    if result["sentiment"] not in ("positive", "negative", "neutral"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"sentiment must be positive|negative|neutral, got: {result['sentiment']}",
+        )
+    return result
 
 
 # serve the frontend html - this has to be AFTER the api routes
