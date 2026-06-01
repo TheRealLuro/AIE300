@@ -36,8 +36,10 @@ MODEL_CATALOG = {
     },
     "ollama": {
         "label": "Ollama (local)",
-        "models": ["llama3.2", "llama3.1", "mistral"],
-        "default": "llama3.2",
+        # llama3.1 is the default: it chains multiple tool calls far more
+        # reliably than the smaller llama3.2 (which is fine for single calls).
+        "models": ["llama3.1", "llama3.2", "mistral"],
+        "default": "llama3.1",
     },
 }
 
@@ -70,6 +72,28 @@ class _OpenAIProvider:
         )
         return resp.choices[0].message.content
 
+    def chat_with_tools(self, messages, model, tools, system=None,
+                        max_tokens=1024, temperature=0.3):
+        kwargs = dict(model=model, messages=messages,
+                      max_tokens=max_tokens, temperature=temperature)
+        if tools:
+            kwargs["tools"] = to_openai_tools(tools)
+            kwargs["tool_choice"] = "auto"
+        resp = self.client.chat.completions.create(**kwargs)
+        msg = resp.choices[0].message
+        tool_calls = []
+        for tc in (msg.tool_calls or []):
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            tool_calls.append({"id": tc.id, "name": tc.function.name, "arguments": args})
+        return {"text": msg.content, "tool_calls": tool_calls}
+
+    def embed(self, text, model="text-embedding-3-small"):
+        resp = self.client.embeddings.create(model=model, input=text)
+        return resp.data[0].embedding
+
 
 class _AnthropicProvider:
     name = "anthropic"
@@ -100,6 +124,28 @@ class _AnthropicProvider:
         )
         return resp.content[0].text
 
+    def chat_with_tools(self, messages, model, tools, system=None,
+                        max_tokens=1024, temperature=0.3):
+        kwargs = dict(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system or "You are a helpful assistant.",
+            messages=messages,
+        )
+        if tools:
+            kwargs["tools"] = to_anthropic_tools(tools)
+        resp = self.client.messages.create(**kwargs)
+        text_parts, tool_calls = [], []
+        for block in resp.content:
+            if block.type == "text":
+                text_parts.append(block.text)
+            elif block.type == "tool_use":
+                tool_calls.append({"id": block.id, "name": block.name,
+                                   "arguments": block.input or {}})
+        return {"text": "\n".join(text_parts) if text_parts else None,
+                "tool_calls": tool_calls}
+
 
 class _OllamaProvider:
     name = "ollama"
@@ -124,6 +170,56 @@ class _OllamaProvider:
         if resp.status_code != 200:
             raise LLMError(f"Ollama error {resp.status_code}: {resp.text}")
         return resp.json()["message"]["content"]
+
+    def chat_with_tools(self, messages, model, tools, system=None,
+                        max_tokens=1024, temperature=0.3):
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "options": {"temperature": temperature, "num_predict": max_tokens},
+        }
+        if tools:
+            payload["tools"] = to_openai_tools(tools)
+        try:
+            resp = requests.post(f"{self.base_url}/api/chat", json=payload, timeout=180)
+        except requests.RequestException as e:
+            raise LLMError(f"Could not reach Ollama at {self.base_url}: {e}")
+        if resp.status_code != 200:
+            raise LLMError(f"Ollama error {resp.status_code}: {resp.text}")
+        msg = resp.json().get("message", {})
+        tool_calls = []
+        for idx, tc in enumerate(msg.get("tool_calls") or []):
+            fn = tc.get("function", {})
+            args = fn.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {}
+            # Ollama does not return tool-call ids; synthesize a stable one.
+            tool_calls.append({
+                "id": f"call_{idx}_{fn.get('name', 'tool')}",
+                "name": fn.get("name"),
+                "arguments": args,
+            })
+        return {"text": msg.get("content") or None, "tool_calls": tool_calls}
+
+    def embed(self, text, model="nomic-embed-text"):
+        try:
+            resp = requests.post(
+                f"{self.base_url}/api/embeddings",
+                json={"model": model, "prompt": text},
+                timeout=60,
+            )
+        except requests.RequestException as e:
+            raise LLMError(f"Could not reach Ollama at {self.base_url}: {e}")
+        if resp.status_code != 200:
+            raise LLMError(
+                f"Ollama embeddings error {resp.status_code}: {resp.text}. "
+                f"Did you run `ollama pull {model}`?"
+            )
+        return resp.json().get("embedding", [])
 
 
 _PROVIDER_CLASSES = {
@@ -211,3 +307,179 @@ def _try_parse_json(text: str):
         return json.loads(s)
     except json.JSONDecodeError:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Tool calling: provider-neutral schema + per-provider adapters.
+#
+# A "tool" is the canonical dict {name, description, parameters(json-schema)}.
+# The agent (agent.py) keeps a provider-neutral "transcript" of typed events
+# and converts it to each provider's message shape via build_messages() right
+# before the API call, so the agent loop never branches on provider.
+# ---------------------------------------------------------------------------
+def to_openai_tools(tools):
+    """Canonical tools -> OpenAI / Ollama function-tool format."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t.get("description", ""),
+                "parameters": t.get("parameters", {"type": "object", "properties": {}}),
+            },
+        }
+        for t in tools
+    ]
+
+
+def to_anthropic_tools(tools):
+    """Canonical tools -> Anthropic tool format (parameters -> input_schema)."""
+    return [
+        {
+            "name": t["name"],
+            "description": t.get("description", ""),
+            "input_schema": t.get("parameters", {"type": "object", "properties": {}}),
+        }
+        for t in tools
+    ]
+
+
+def build_messages(transcript, provider_name, system):
+    """Convert a canonical transcript into a provider's message list.
+
+    Transcript events: {type: user|assistant_text|tool_call|tool_result, ...}.
+    OpenAI/Ollama embed the system prompt as a message; Anthropic takes it as a
+    separate `system=` argument so it is omitted from the returned messages.
+    """
+    if provider_name == "anthropic":
+        return _build_anthropic_messages(transcript)
+    if provider_name == "ollama":
+        return _build_ollama_messages(transcript, system)
+    return _build_openai_messages(transcript, system)
+
+
+def _build_openai_messages(transcript, system):
+    msgs = [{"role": "system", "content": system}]
+    i, n = 0, len(transcript)
+    while i < n:
+        ev = transcript[i]
+        t = ev["type"]
+        if t == "user":
+            msgs.append({"role": "user", "content": ev["content"]})
+            i += 1
+        elif t in ("assistant_text", "tool_call"):
+            text_parts, tool_calls = [], []
+            while i < n and transcript[i]["type"] in ("assistant_text", "tool_call"):
+                e = transcript[i]
+                if e["type"] == "assistant_text":
+                    text_parts.append(e["content"])
+                else:
+                    tool_calls.append({
+                        "id": e["id"],
+                        "type": "function",
+                        "function": {"name": e["name"],
+                                     "arguments": json.dumps(e["arguments"])},
+                    })
+                i += 1
+            m = {"role": "assistant", "content": "\n".join(text_parts)}
+            if tool_calls:
+                m["tool_calls"] = tool_calls
+            msgs.append(m)
+        elif t == "tool_result":
+            msgs.append({"role": "tool", "tool_call_id": ev["id"],
+                         "content": ev["content"]})
+            i += 1
+        else:
+            i += 1
+    return msgs
+
+
+def _build_ollama_messages(transcript, system):
+    # Ollama mirrors OpenAI but wants tool-call arguments as an object (not a
+    # JSON string), uses `tool_name` on tool results, and ignores call ids.
+    msgs = [{"role": "system", "content": system}]
+    i, n = 0, len(transcript)
+    while i < n:
+        ev = transcript[i]
+        t = ev["type"]
+        if t == "user":
+            msgs.append({"role": "user", "content": ev["content"]})
+            i += 1
+        elif t in ("assistant_text", "tool_call"):
+            text_parts, tool_calls = [], []
+            while i < n and transcript[i]["type"] in ("assistant_text", "tool_call"):
+                e = transcript[i]
+                if e["type"] == "assistant_text":
+                    text_parts.append(e["content"])
+                else:
+                    tool_calls.append({
+                        "function": {"name": e["name"], "arguments": e["arguments"]},
+                    })
+                i += 1
+            m = {"role": "assistant", "content": "\n".join(text_parts)}
+            if tool_calls:
+                m["tool_calls"] = tool_calls
+            msgs.append(m)
+        elif t == "tool_result":
+            msgs.append({"role": "tool", "tool_name": ev.get("name", ""),
+                         "content": ev["content"]})
+            i += 1
+        else:
+            i += 1
+    return msgs
+
+
+def _build_anthropic_messages(transcript):
+    msgs = []
+    i, n = 0, len(transcript)
+    while i < n:
+        ev = transcript[i]
+        t = ev["type"]
+        if t == "user":
+            msgs.append({"role": "user", "content": ev["content"]})
+            i += 1
+        elif t in ("assistant_text", "tool_call"):
+            content = []
+            while i < n and transcript[i]["type"] in ("assistant_text", "tool_call"):
+                e = transcript[i]
+                if e["type"] == "assistant_text":
+                    if e["content"]:
+                        content.append({"type": "text", "text": e["content"]})
+                else:
+                    content.append({"type": "tool_use", "id": e["id"],
+                                    "name": e["name"], "input": e["arguments"]})
+                i += 1
+            msgs.append({"role": "assistant", "content": content})
+        elif t == "tool_result":
+            # Coalesce consecutive tool results into one user message.
+            results = []
+            while i < n and transcript[i]["type"] == "tool_result":
+                e = transcript[i]
+                results.append({"type": "tool_result", "tool_use_id": e["id"],
+                                "content": e["content"]})
+                i += 1
+            msgs.append({"role": "user", "content": results})
+        else:
+            i += 1
+    return msgs
+
+
+def chat_with_tools(messages, tools, provider=None, model=None, system=None,
+                    max_tokens=1024, temperature=0.3) -> dict:
+    """High-level one-shot tool call. Returns {text, tool_calls}."""
+    p = get_provider(provider)
+    model = resolve_model(p.name, model)
+    return p.chat_with_tools(messages, model, tools, system=system,
+                             max_tokens=max_tokens, temperature=temperature)
+
+
+# Local-first embeddings for the RAG tool. Defaults to Ollama nomic-embed-text
+# (no API key, runs on the user's machine); set EMBED_MODEL to override.
+EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
+
+
+def embed_text(text: str):
+    """Return an embedding vector for `text`. Uses the local Ollama embedder
+    regardless of which chat provider is selected, so RAG works offline."""
+    provider = get_provider("ollama")
+    return provider.embed(text, model=EMBED_MODEL)

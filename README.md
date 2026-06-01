@@ -2,13 +2,14 @@
 
 > Full-stack app for AIE300. FastAPI + MongoDB + PyTorch + LLM chat, served from one container.
 
-The app does three things:
+The app does four things:
 
 1. **Item manager** - simple CRUD over a MongoDB collection.
 2. **Flower predictor** - a PyTorch classifier trained on the iris dataset.
 3. **AI assistant** - chat + structured-data extraction backed by your choice of OpenAI, Anthropic, or a local Ollama server.
+4. **AI agent** - a tool-using agent (function calling + an agent loop + RAG) that can *act* on the app: search items, create items, and answer grounded questions, with guardrails. See [AI Agent](#part-4---ai-agent-function-calling--tools).
 
-All three share the same FastAPI app and the same plain HTML/JS frontend.
+They all share the same FastAPI app and the same plain HTML/JS frontend.
 
 ---
 
@@ -56,6 +57,8 @@ FastAPI (web container)
     |-- /predict     --> PyTorch model (loaded from model.pth + scaler.pkl)
     |-- /chat        --> llm_service --> OpenAI / Anthropic / Ollama
     |-- /analyze     --> llm_service (JSON-only, low temperature, with retry)
+    |-- /ask         --> rag.py (embeddings retrieval over items) --> grounded answer
+    |-- /agent       --> agent.py (tool-calling loop) --> search/create/RAG/predict tools
     |-- /llm/models  --> provider + model catalog for the frontend dropdown
     |-- /static/*    --> index.html, chat.html, predict.html
 ```
@@ -207,6 +210,146 @@ Provider clients are lazily constructed and cached, so the SDK only gets initial
 
 ---
 
+## Part 4 - AI Agent (function calling + tools)
+
+This is the agent lab: function calling, an agent loop, three tools wired to the app's own API, a `POST /agent` endpoint that returns a reasoning trace, an agentic frontend, and guardrails.
+
+### Setup (local-first)
+
+The agent defaults to a **local Ollama** model so it runs on your machine, and the RAG tool uses a **local embedding** model. Pull both once:
+
+```
+ollama pull llama3.1          # tool-capable chat model (the agent default)
+ollama pull nomic-embed-text  # embeddings for the RAG tool / /ask
+```
+
+> **Model note (from actually running it):** `llama3.2` (3B) handles *single* tool calls fine but is unreliable at *chaining* (it'll do a search, then narrate "I created one" without calling `create_item`). `llama3.1` (8B) chains multi-step tool calls reliably, so it's the default. Any tool-capable model works; weaker ones just need a stronger nudge (see the agent system prompt).
+
+You can still switch the agent to OpenAI/Anthropic per request from the dropdown - tool calling is implemented for all three.
+
+> **Running with Docker + host Ollama:** Ollama must listen on all interfaces for the container to reach it - set `OLLAMA_HOST=0.0.0.0` for the Ollama service and point `OLLAMA_BASE_URL` at `http://host.docker.internal:11434`. If Ollama is bound to `127.0.0.1` (the default), run the app on the host (`uvicorn main:app`) with Mongo in a container instead. New `.env` knobs (see `.env.example`): `AGENT_DEFAULT_PROVIDER`, `AGENT_DEFAULT_MODEL`, `AGENT_MAX_STEPS`, `EMBED_MODEL`.
+
+### Which path? Path A - build the loop from scratch
+
+I built the agent loop by hand around the raw provider function-calling SDKs (no LangChain / no provider agent SDK). Two reasons. First, the app already has a clean provider abstraction (`llm_service.py`) that hides OpenAI / Anthropic / **local Ollama** behind one interface - a framework that assumes one provider would have fought that, and I specifically wanted the agent to run on a local model by default. Second, the lab's whole point is understanding tool calling, the loop, and guardrails; writing the ~150-line loop myself makes every step (decide → execute → feed back → repeat) visible and debuggable instead of hidden behind `AgentExecutor`.
+
+### Architecture
+
+```
+Browser (chat.html, agentic)
+   | POST /agent {message | state + approvals/user_input, provider, model}
+   v
+main.py  --> agent.run_agent()
+                |  keeps a provider-neutral TRANSCRIPT of typed events
+                |  (user / assistant_text / tool_call / tool_result)
+                |
+                |  loop (max AGENT_MAX_STEPS):
+                |    llm_service.build_messages(transcript, provider)  # per-provider shape
+                |    provider.chat_with_tools(messages, TOOL_SCHEMAS)  # native function calling
+                |    no tool calls? -> return final answer + steps trace
+                |    tool calls?    -> run each tool, append result, loop
+                v
+            TOOLS --> items_collection (Mongo)   # search_items, create_item, delete_item
+                  --> rag.answer()               # query_knowledge_base  (embeddings + LLM)
+                  --> nn_service.predict()        # predict_flower
+                  --> (pause loop)                # ask_user / confirmation
+```
+
+The transcript is the entire agent state and it's JSON-serializable, so pausing for a confirmation or a clarifying question is stateless on the server: the frontend just echoes the `state` back with a decision. `llm_service.build_messages()` converts the transcript into each provider's exact message format right before every call, so the loop never branches on provider.
+
+### Tools
+
+All tools reuse the app's existing data layer - the agent acts on the *same* MongoDB items, RAG, and PyTorch model the rest of the app uses.
+
+| Tool | Description | What it calls |
+|------|-------------|---------------|
+| `list_items()` | List everything in the collection + the count | `items_collection` (same data as `GET /items`) |
+| `search_items(query)` | Keyword search over item name/description | `items_collection` (same data as `GET /items`) |
+| `create_item(name, description?)` | Create a new item — **destructive, needs confirmation** | `items_collection` (same as `POST /items`) |
+| `query_knowledge_base(question)` | Embeddings RAG: retrieve relevant items, answer grounded with citations | `rag.answer()` (the `POST /ask` system) |
+| `predict_flower(sepal/petal …)` | Classify an iris from 4 measurements | `nn_service.predict()` (same as `POST /predict`) |
+| `delete_item(item_id)` | Delete an item — **destructive, needs confirmation** | `items_collection` (same as `DELETE /items/{id}`) |
+| `ask_user(question, options?)` | Ask one structured clarifying question when a required detail is missing | pauses the loop for user input |
+
+The three required tools are `search_items`, `create_item`, and `query_knowledge_base`; the rest are bonus reuse of what the app already had.
+
+### Guardrails (all three required, all implemented)
+
+| Guardrail | Why it matters | How it's done here |
+|-----------|----------------|--------------------|
+| **Max iterations** | A model can loop forever (call → result → call again …) and burn tokens/time | The loop is capped at `AGENT_MAX_STEPS` (default 8). On exhaustion it returns gracefully with the partial trace, never hangs. |
+| **Tool confirmation** | Destructive actions shouldn't auto-fire — a wrong `create_item`/`delete_item` mutates real data | `create_item` and `delete_item` **pause** the loop and return `needs_confirmation`; nothing runs until the user clicks Approve. Deny feeds "user declined" back so the model adapts. |
+| **Error handling** | Tools fail (bad input, Mongo down, Ollama not pulled). A stack trace would crash the loop | Every tool runs inside `_safe_execute()`; failures become a plain-text result the model reads and recovers from. Provider errors surface as clean 400/502. |
+
+Plus `ask_user`: instead of guessing a missing argument, the agent asks one structured question (rendered with optional quick-pick buttons) and resumes once answered.
+
+### Conversation memory + edge cases
+
+The chat keeps **conversation memory** across turns (the whole transcript is the agent's state), so follow-ups work naturally:
+
+- Empty collection / no search hits → it says so and **offers a next step** ("You don't have any items yet - would you like me to add one?") instead of failing silently or auto-creating.
+- "Yes" / "add one" after that offer → it remembers the context and creates the item (behind a confirmation), asking for a name via `ask_user` if you didn't give one.
+- "Delete the X item" (by name, not id) → it searches first to find the id, then deletes (with confirmation).
+- Missing tool arguments (e.g. flower measurements, or an item name) → a **server-side required-input gate** pauses the loop and collects them in a single form before the tool runs. The agent **never fabricates** required values: `predict_flower` only runs with measurements the user actually provided (numbers are checked against the user's own messages), so "Predict" with no numbers asks you for them instead of guessing the textbook defaults.
+- Local models sometimes emit a tool call as *text* instead of really calling it; the server detects that and nudges the model to call the tool (or answer plainly), so the user never sees raw `tool(...)`/JSON in the chat.
+
+### Endpoints
+
+| Method | Path | What it does |
+|--------|------|--------------|
+| POST | `/ask` | Embeddings RAG over your items. Body: `{question, provider?, model?, k?}`. Returns `{answer, sources}`. |
+| POST | `/agent` | Run/resume the agent. Body: `{message, provider?, model?}` to start, or `{state, approvals|user_input}` to resume. Returns a status-tagged result + reasoning trace (below). |
+
+`/agent` returns one of three shapes:
+
+```jsonc
+// finished
+{ "status": "completed", "result": "...", "steps": [ { "tool": "...", "input": {...}, "output": "..." } ], "state": {...} }
+// wants to run a destructive tool
+{ "status": "needs_confirmation", "pending": { "id": "...", "tool": "create_item", "input": {...} }, "steps": [...], "state": {...} }
+// needs a missing detail
+{ "status": "needs_input", "question": "...", "options": [...], "steps": [...], "state": {...} }
+```
+
+### Frontend
+
+The chat page (`/chat-page`) is now the **agent interface**: one clean input box, press Send, and the agent works. While it runs you get an "Agent is thinking…" indicator; each tool it calls renders as a dark **trace card** showing the tool name, the arguments it chose, and what the tool returned; the final natural-language answer appears as a normal chat bubble below the trace. If the agent hits a destructive tool you get an **Approve / Deny** card; if it's missing a detail you get a **clarifying-question** card. The provider/model dropdown defaults to local Ollama but switches the agent to OpenAI/Anthropic on the fly.
+
+### Part 1 demo (function-calling basics, standalone)
+
+`function_calling_demo.py` shows the raw mechanic end-to-end with three tiny tools and **no server or DB needed**, printing the full trace (user → model picks tool → our code runs it → result fed back → final answer):
+
+```
+python function_calling_demo.py --provider ollama --model llama3.2
+python function_calling_demo.py --provider anthropic --prompt "What's 19 * 23?"
+```
+
+### Example task + trace
+
+**Task:** *"Find items about Python, and if there aren't any, create one."*
+
+```
+USER -> Find items about Python, and if there aren't any, create one.
+
+🔧 search_items   input  { "query": "Python" }
+                  result No items found matching 'Python'.
+
+🔧 create_item    input  { "name": "Python", "description": "Notes about the Python language" }
+                  >>> PAUSES: needs_confirmation  ->  user clicks "Approve"
+                  result Created item 'Python' with id=66f3....
+
+ASSISTANT -> I checked and there were no items about Python, so I created one
+             ("Python"). Anything you'd like me to add to it?
+```
+
+This is the compound, multi-step case: the agent reasons across two different tools (search, then conditionally create), and the destructive step is gated behind an explicit user approval.
+
+### Reflection
+
+The hardest and most interesting part was **normalizing native tool calling across three providers**. OpenAI, Anthropic, and Ollama all "support function calling," but the shapes diverge in annoying ways: OpenAI wants tool-call arguments as a JSON *string* and tool results as `role:"tool"` with a `tool_call_id`; Ollama wants the arguments as an *object*, uses `tool_name`, and returns no call ids at all (I synthesize them); Anthropic uses `tool_use`/`tool_result` content blocks inside `user`/`assistant` turns and coalesces results. Keeping a single provider-neutral transcript and converting it per-provider at the last moment (`build_messages`) is what kept the loop itself clean. What surprised me most was that the **local** model was the fiddliest link - tool calling only works on tool-capable Ollama models (llama3.1/llama3.2), and weaker models will sometimes describe a tool in prose instead of emitting a tool call; the system prompt ("prefer calling a tool over assuming a fact; ask_user when unsure") mattered more for the local model than for the cloud ones. The other thing I'd underestimated was that good guardrails are mostly about **state**: making pause/resume work for confirmations forced the stateless, serializable-transcript design, which then made the clarifying-question flow basically free.
+
+---
+
 ## Prompt documentation
 
 Both system prompts and the few-shot examples live at the top of `main.py` (`CHAT_SYSTEM_PROMPT`, `ANALYZE_SYSTEM_PROMPT`, `ANALYZE_FEW_SHOT`) so they're easy to find and edit.
@@ -268,11 +411,14 @@ Output: {"categories": ["kitchen", "utensil"], "tags": ["spatula", "plastic", "d
 
 ```
 .
-├── main.py              # FastAPI app: items, predict, chat, analyze, page routes
+├── main.py              # FastAPI app: items, predict, chat, analyze, ask, agent, page routes
 ├── db.py                # MongoDB connection (pymongo)
 ├── neural_network.py    # SimpleClassifier + ModelService (train/load/predict)
 ├── pytorch_basics.py    # Standalone PyTorch tensor/autograd demo
-├── llm_service.py       # Provider abstraction (OpenAI/Anthropic/Ollama) + JSON retry
+├── llm_service.py       # Provider abstraction + tool calling (chat_with_tools) + embeddings
+├── rag.py               # Embeddings-based RAG over items (powers /ask + the RAG tool)
+├── agent.py             # Tool-calling agent loop, tool registry, guardrails (powers /agent)
+├── function_calling_demo.py  # Part 1: standalone function-calling trace (no server needed)
 ├── test_llm.py          # CLI sanity check: --provider, --model, --prompt
 ├── static/
 │   ├── index.html       # Items UI

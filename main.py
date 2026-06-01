@@ -1,16 +1,52 @@
-from fastapi import FastAPI, HTTPException
+import os
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 from typing import Optional, List
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.routing import APIRoute
 from bson import ObjectId
 from db import items_collection
 from neural_network import ModelService
 from fastapi.responses import FileResponse
 import llm_service
+import rag
+import agent
 
-app = FastAPI(title="Boring API")
+# Log through uvicorn's logger so our messages match the server's clean format.
+logger = logging.getLogger("uvicorn")
+
+
+def _log_routes(app: FastAPI):
+    """Print a tidy table of the registered API routes at startup."""
+    routes = [
+        (r.path, ",".join(sorted(m for m in r.methods if m not in ("HEAD", "OPTIONS"))))
+        for r in app.routes if isinstance(r, APIRoute)
+    ]
+    routes.sort()
+    logger.info("Boring API ready - %d routes registered:", len(routes))
+    for path, methods in routes:
+        logger.info("    %-6s %s", methods, path)
+    logger.info("Pages:  /  |  /chat-page (agent)  |  /predict-page  |  /docs")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _log_routes(app)
+    yield
+
+
+app = FastAPI(title="Boring API", lifespan=lifespan)
 nn_service = ModelService()
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    # Browsers auto-request this; return 204 so it doesn't spam 404s in the log.
+    return Response(status_code=204)
 # need this so the frontend can talk to the api
 app.add_middleware(
     CORSMiddleware,
@@ -178,6 +214,30 @@ class AnalyzeRequest(BaseModel):
     model: Optional[str] = None
 
 
+class AskRequest(BaseModel):
+    question: str
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    k: int = 4
+
+
+class AgentRequest(BaseModel):
+    # message starts a task; state/approvals/user_input/field_values resume a paused one.
+    message: Optional[str] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    state: Optional[dict] = None
+    approvals: Optional[dict] = None
+    user_input: Optional[str] = None
+    field_values: Optional[dict] = None
+
+
+# The agent defaults to a local, tool-capable Ollama model, but the frontend
+# can override provider/model per request from the existing dropdown.
+AGENT_DEFAULT_PROVIDER = os.getenv("AGENT_DEFAULT_PROVIDER", "ollama")
+AGENT_DEFAULT_MODEL = os.getenv("AGENT_DEFAULT_MODEL", "llama3.1")
+
+
 @app.get("/llm/models")
 def list_models():
     """Tells the frontend which providers/models are available for the dropdown."""
@@ -248,6 +308,55 @@ def analyze(request: AnalyzeRequest):
             detail=f"sentiment must be positive|negative|neutral, got: {result['sentiment']}",
         )
     return result
+
+
+# --- RAG + Agent routes ---
+
+@app.post("/ask")
+def ask(request: AskRequest):
+    """Embeddings-based RAG over your items: retrieve the most relevant items
+    and answer the question grounded in them. Returns {answer, sources}."""
+    if not request.question.strip():
+        raise HTTPException(status_code=400, detail="question must not be empty")
+    try:
+        return rag.answer(
+            request.question,
+            provider=request.provider,
+            model=request.model,
+            k=request.k,
+        )
+    except llm_service.LLMError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"RAG failed: {e}")
+
+
+@app.post("/agent")
+def run_agent(request: AgentRequest):
+    """Run (or resume) the tool-using agent over the app's API.
+
+    Returns a status-tagged result with a reasoning trace:
+      - completed:          {status, result, steps, state, ...}
+      - needs_confirmation: {status, pending, steps, state, message}  (destructive tool)
+      - needs_input:        {status, question, options, steps, state} (clarification)
+    Resume a paused run by POSTing back `state` plus `approvals` or `user_input`.
+    """
+    provider = request.provider or AGENT_DEFAULT_PROVIDER
+    model = request.model or AGENT_DEFAULT_MODEL
+    try:
+        return agent.run_agent(
+            message=request.message,
+            state=request.state,
+            approvals=request.approvals,
+            user_input=request.user_input,
+            field_values=request.field_values,
+            provider=provider,
+            model=model,
+        )
+    except llm_service.LLMError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Agent failed: {e}")
 
 
 # serve the frontend html - this has to be AFTER the api routes

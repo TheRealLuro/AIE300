@@ -15,7 +15,12 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       DEFAULT_LLM_PROVIDER: ${DEFAULT_LLM_PROVIDER:-openai}
       # If you run Ollama on the host machine, use host.docker.internal.
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:49757}
+      # Agent (POST /agent) + RAG (POST /ask) settings.
+      AGENT_DEFAULT_PROVIDER: ${AGENT_DEFAULT_PROVIDER:-ollama}
+      AGENT_DEFAULT_MODEL: ${AGENT_DEFAULT_MODEL:-llama3.1}
+      AGENT_MAX_STEPS: ${AGENT_MAX_STEPS:-8}
+      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
     depends_on:
       - db
 

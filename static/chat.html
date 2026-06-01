@@ -3,300 +3,480 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Boring API - AI Chat</title>
+  <title>Boring API · AI Agent</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
-    body { background: #eef1f5; color: #222; padding: 20px; }
-    .wrap { max-width: 760px; margin: 0 auto; }
-    h1 { font-size: 24px; margin-bottom: 4px; }
-    .subtitle { color: #888; font-size: 13px; margin-bottom: 18px; }
-    .nav { font-size: 13px; margin-bottom: 14px; }
-    .nav a { color: #2563eb; text-decoration: none; margin-right: 12px; }
-    .nav a:hover { text-decoration: underline; }
-
-    .card { background: white; border-radius: 10px; padding: 18px;
-            margin-bottom: 18px; box-shadow: 0 2px 6px rgba(0,0,0,0.07); }
-    .card h3 { margin-bottom: 12px; font-size: 16px; }
-
-    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
-                font-size: 13px; }
-    .controls label { color: #555; }
-    .controls select, .controls button {
-      padding: 6px 10px; border: 1px solid #ccc; border-radius: 5px;
-      background: white; font-size: 13px;
+    :root{
+      --bg:#f5f6fa; --panel:#ffffff; --ink:#1d2230; --muted:#8b90a0; --faint:#aeb3c2;
+      --line:#e8eaf0; --line2:#eef0f5;
+      --accent:#6366f1; --accent2:#8b5cf6;
+      --user:linear-gradient(135deg,#6366f1,#8b5cf6);
+      --ok:#16a34a; --danger:#ef4444; --warn:#f59e0b;
+      --radius:18px; --shadow:0 1px 2px rgba(16,24,40,.04),0 10px 30px rgba(16,24,40,.07);
     }
-    .controls button { background: #6b7280; color: white; border: none; cursor: pointer; }
-    .controls button:hover { background: #4b5563; }
+    *{margin:0;padding:0;box-sizing:border-box;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Arial,sans-serif;}
+    body{background:radial-gradient(1100px 540px at 50% -12%,#eceeff,var(--bg)) fixed;color:var(--ink);
+         min-height:100vh;padding:22px 16px 32px;}
+    .wrap{max-width:840px;margin:0 auto;}
 
-    /* chat area */
-    #messages {
-      height: 380px; overflow-y: auto; border: 1px solid #e5e7eb;
-      border-radius: 8px; padding: 12px; background: #fafafa;
-      display: flex; flex-direction: column; gap: 10px;
-    }
-    .msg { max-width: 78%; padding: 9px 13px; border-radius: 14px;
-           font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; }
-    .msg.user { align-self: flex-end; background: #2563eb; color: white;
-                border-bottom-right-radius: 4px; }
-    .msg.assistant { align-self: flex-start; background: #e5e7eb; color: #111;
-                     border-bottom-left-radius: 4px; }
-    .msg.system-note { align-self: center; background: transparent;
-                       color: #999; font-size: 12px; font-style: italic; padding: 4px; }
-    .msg.error { align-self: center; background: #fee2e2; color: #991b1b;
-                 font-size: 13px; }
-    .typing { align-self: flex-start; color: #888; font-size: 13px; font-style: italic; }
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+    .brand{display:flex;align-items:center;gap:11px;}
+    .brand .mark{width:38px;height:38px;border-radius:11px;background:var(--user);color:#fff;
+                 display:grid;place-items:center;font-size:18px;box-shadow:0 6px 16px rgba(99,102,241,.35);}
+    .brand h1{font-size:18px;font-weight:700;letter-spacing:-.01em;}
+    .brand p{font-size:12px;color:var(--muted);margin-top:1px;}
+    nav a{color:var(--muted);text-decoration:none;font-size:13px;margin-left:16px;font-weight:500;}
+    nav a:hover{color:var(--accent);}
 
-    .composer { display: flex; gap: 8px; margin-top: 12px; }
-    .composer input { flex: 1; padding: 10px; border: 1px solid #ccc;
-                      border-radius: 6px; font-size: 14px; }
-    .composer button { padding: 10px 18px; background: #4CAF50; color: white;
-                       border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
-    .composer button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;
+             background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:9px 12px;
+             box-shadow:var(--shadow);font-size:13px;}
+    .toolbar .grp{display:flex;align-items:center;gap:7px;}
+    .toolbar label{color:var(--muted);font-size:12px;}
+    .toolbar select{appearance:none;border:1px solid var(--line);border-radius:9px;padding:6px 26px 6px 10px;
+                    background:#fbfbfe url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238b90a0' fill='none' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 9px center;
+                    font-size:13px;color:var(--ink);cursor:pointer;}
+    .toolbar .spacer{flex:1;}
+    .toolbar .ghost{border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:9px;
+                    padding:6px 12px;cursor:pointer;font-size:12.5px;}
+    .toolbar .ghost:hover{color:var(--danger);border-color:#f3c9c9;background:#fff6f6;}
+    .pill{font-size:11px;color:var(--accent);background:#eef0ff;border-radius:999px;padding:3px 9px;font-weight:600;}
 
-    /* analyze panel */
-    #analyzeInput { width: 100%; height: 80px; padding: 10px;
-                    border: 1px solid #ccc; border-radius: 6px; font-size: 14px;
-                    resize: vertical; font-family: inherit; }
-    .analyze-btn { margin-top: 8px; padding: 8px 16px; background: #2563eb;
-                   color: white; border: none; border-radius: 6px; cursor: pointer; }
-    .analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    #analyzeResult { margin-top: 12px; font-size: 13px; }
-    .badge { display: inline-block; background: #2563eb; color: white;
-             padding: 3px 9px; border-radius: 999px; margin: 2px 4px 2px 0; font-size: 12px; }
-    .badge.tag { background: #6b7280; }
-    .badge.sent-positive { background: #16a34a; }
-    .badge.sent-negative { background: #dc2626; }
-    .badge.sent-neutral  { background: #6b7280; }
-    .field-label { color: #666; font-size: 12px; margin-top: 8px; display: block; }
-    pre.raw { background: #1f2937; color: #e5e7eb; padding: 10px;
-              border-radius: 6px; overflow-x: auto; font-size: 12px; margin-top: 8px; }
+    .chat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+          box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;}
+    #messages{padding:20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;
+              height:min(60vh,560px);min-height:380px;scroll-behavior:smooth;}
+    #messages::-webkit-scrollbar{width:9px;}
+    #messages::-webkit-scrollbar-thumb{background:#e2e4ec;border-radius:9px;border:2px solid #fff;}
+
+    .row{display:flex;gap:10px;align-items:flex-start;}
+    .row.user{justify-content:flex-end;}
+    .row.activity-row{padding-left:42px;}
+    .avatar{width:32px;height:32px;border-radius:10px;background:var(--user);color:#fff;flex:0 0 auto;
+            display:grid;place-items:center;font-size:15px;box-shadow:0 4px 12px rgba(99,102,241,.3);}
+    .bubble{max-width:74%;padding:11px 15px;font-size:14.5px;line-height:1.5;border-radius:16px;
+            white-space:pre-wrap;word-wrap:break-word;}
+    .bubble.user{background:var(--user);color:#fff;border-bottom-right-radius:5px;
+                 box-shadow:0 6px 16px rgba(99,102,241,.25);}
+    .bubble.assistant{background:#f7f8fb;border:1px solid var(--line);color:var(--ink);
+                      border-bottom-left-radius:5px;}
+    .note{align-self:center;color:var(--faint);font-size:12px;font-style:italic;padding:2px;}
+    .errline{align-self:center;background:#fef2f2;color:#b42318;border:1px solid #fecaca;
+             font-size:13px;padding:8px 14px;border-radius:12px;}
+
+    /* typing dots */
+    .typing{display:inline-flex;gap:4px;align-items:center;padding:14px 16px!important;}
+    .typing span{width:7px;height:7px;border-radius:50%;background:var(--faint);animation:bounce 1.2s infinite;}
+    .typing span:nth-child(2){animation-delay:.15s;} .typing span:nth-child(3){animation-delay:.3s;}
+    @keyframes bounce{0%,60%,100%{transform:translateY(0);opacity:.5;}30%{transform:translateY(-5px);opacity:1;}}
+
+    /* activity chips (one per tool call) */
+    .activity{width:100%;max-width:560px;border:1px solid var(--line);border-radius:13px;background:#fff;overflow:hidden;}
+    .activity-head{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;user-select:none;}
+    .activity-head:hover{background:#fafbff;}
+    .activity .ico{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:13px;flex:0 0 auto;}
+    .activity .sum{flex:1;font-size:13.5px;color:#3b4150;}
+    .activity .chev{color:var(--faint);font-size:16px;transition:transform .18s;}
+    .activity.open .chev{transform:rotate(90deg);}
+    .activity-body{display:none;border-top:1px solid var(--line2);padding:10px 12px;background:#fcfcfe;}
+    .activity.open .activity-body{display:block;}
+    .kv{margin-bottom:8px;}.kv:last-child{margin-bottom:0;}
+    .kvl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);}
+    .activity-body pre{margin-top:3px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;
+                       color:#374151;white-space:pre-wrap;word-wrap:break-word;
+                       background:#f3f4f8;border-radius:8px;padding:8px 10px;}
+
+    /* action cards (confirm / clarify) */
+    .action-card{width:100%;max-width:560px;border-radius:14px;padding:14px 16px;border:1px solid var(--line);}
+    .action-card.confirm{background:#fffaf2;border-color:#fde7c4;}
+    .action-card.clarify{background:#f1f6ff;border-color:#cfe0ff;}
+    .ac-title{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14px;color:#3b4150;}
+    .ac-ico{font-size:16px;}
+    .ac-fields{margin:11px 0 4px;display:flex;flex-direction:column;gap:7px;}
+    .afield{display:flex;gap:10px;font-size:13.5px;align-items:baseline;}
+    .afield span{color:var(--muted);min-width:84px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;}
+    .afield b{color:var(--ink);font-weight:600;}
+    .ac-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+    .ac-input{display:flex;gap:8px;margin-top:11px;}
+    .ac-input input{flex:1;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:14px;outline:none;}
+    .ac-input input:focus{border-color:var(--accent);}
+    .ac-form{display:flex;flex-direction:column;gap:8px;margin-top:11px;}
+    .ff-row{display:flex;align-items:center;gap:10px;}
+    .ff-row label{flex:0 0 132px;font-size:12.5px;color:var(--muted);}
+    .ff-row input{flex:1;border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:14px;outline:none;background:#fff;}
+    .ff-row input:focus{border-color:var(--accent);}
+    .ff-row input.ff-bad{border-color:var(--danger);background:#fff6f6;}
+    .btn{border:none;border-radius:10px;padding:8px 16px;font-size:13.5px;font-weight:600;cursor:pointer;color:#fff;}
+    .btn:disabled{opacity:.5;cursor:not-allowed;}
+    .btn-approve{background:var(--ok);} .btn-deny{background:#fff;color:var(--danger);border:1px solid #f3c9c9;}
+    .btn-chip{background:#fff;color:var(--accent);border:1px solid #cfe0ff;}
+
+    /* composer */
+    .composer{display:flex;align-items:center;gap:9px;padding:11px;border-top:1px solid var(--line);background:#fff;position:relative;}
+    #slashBtn{width:38px;height:38px;border-radius:11px;border:1px solid var(--line);background:#f6f7fb;
+              color:var(--muted);font-size:18px;font-weight:700;cursor:pointer;flex:0 0 auto;}
+    #slashBtn:hover{background:#eef0ff;color:var(--accent);border-color:#d9ddf5;}
+    #userInput{flex:1;border:1px solid var(--line);border-radius:13px;padding:11px 15px;font-size:14.5px;
+               outline:none;background:#fbfbfe;color:var(--ink);}
+    #userInput:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(99,102,241,.12);}
+    #userInput:disabled{background:#f3f4f7;}
+    #sendBtn{width:40px;height:40px;border-radius:12px;border:none;background:var(--accent);color:#fff;
+             cursor:pointer;display:grid;place-items:center;flex:0 0 auto;box-shadow:0 6px 14px rgba(99,102,241,.3);}
+    #sendBtn:hover{background:#5457e6;} #sendBtn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;}
+
+    .slash-menu{position:absolute;bottom:62px;left:11px;width:300px;background:#fff;border:1px solid var(--line);
+                border-radius:14px;box-shadow:0 14px 40px rgba(16,24,40,.16);padding:6px;z-index:30;display:none;}
+    .slash-menu.open{display:block;}
+    .slash-title{font-size:10.5px;color:var(--faint);padding:7px 11px 5px;text-transform:uppercase;letter-spacing:.07em;}
+    .slash-item{padding:9px 11px;border-radius:9px;cursor:pointer;}
+    .slash-item:hover,.slash-item.active{background:#eef0ff;}
+    .slash-item .cmd{font-weight:600;color:var(--accent);font-size:13px;}
+    .slash-item .desc{color:var(--muted);font-size:12px;margin-top:1px;}
+    .slash-empty{padding:11px;color:var(--faint);font-size:13px;}
+
+    .extra{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:16px;
+           box-shadow:var(--shadow);overflow:hidden;}
+    .extra summary{cursor:pointer;padding:14px 18px;font-size:14px;font-weight:600;color:#3b4150;list-style:none;
+                   display:flex;align-items:center;gap:8px;}
+    .extra summary::-webkit-details-marker{display:none;}
+    .extra summary::before{content:"›";color:var(--faint);font-size:18px;transition:transform .18s;}
+    .extra[open] summary::before{transform:rotate(90deg);}
+    .extra .body{padding:0 18px 18px;}
+    .extra textarea{width:100%;height:80px;padding:11px;border:1px solid var(--line);border-radius:11px;
+                    font-size:14px;resize:vertical;font-family:inherit;outline:none;}
+    .extra textarea:focus{border-color:var(--accent);}
+    .extra .analyze-btn{margin-top:10px;padding:9px 18px;background:var(--accent);color:#fff;border:none;
+                        border-radius:10px;cursor:pointer;font-size:13.5px;font-weight:600;}
+    .extra .analyze-btn:disabled{opacity:.5;}
+    #analyzeResult{margin-top:12px;font-size:13px;}
+    .badge{display:inline-block;background:var(--accent);color:#fff;padding:3px 10px;border-radius:999px;
+           margin:2px 4px 2px 0;font-size:12px;}
+    .badge.tag{background:#eef0f5;color:#586;} .badge.sent-positive{background:var(--ok);}
+    .badge.sent-negative{background:var(--danger);} .badge.sent-neutral{background:#9aa0ad;}
+    .field-label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-top:10px;display:block;}
+    pre.raw{background:#1e2330;color:#e5e7eb;padding:11px;border-radius:10px;overflow-x:auto;font-size:12px;margin-top:8px;}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>AI Chat</h1>
-    <p class="subtitle">Ask the in-app assistant about items or the flower predictor.</p>
-    <div class="nav">
-      <a href="/static/index.html">Items</a>
-      <a href="/predict-page">Flower Predictor</a>
-      <a href="/docs">API Docs</a>
-    </div>
-
-    <!-- model picker -->
-    <div class="card">
-      <h3>Model</h3>
-      <div class="controls">
-        <label>Provider:</label>
-        <select id="providerSelect"></select>
-        <label>Model:</label>
-        <select id="modelSelect"></select>
-        <button id="resetBtn" type="button">Reset conversation</button>
+    <header>
+      <div class="brand">
+        <div class="mark">✦</div>
+        <div><h1>AI Agent</h1><p>Chat, or ask it to act on your items</p></div>
       </div>
+      <nav>
+        <a href="/static/index.html">Items</a>
+        <a href="/predict-page">Predictor</a>
+        <a href="/docs">API</a>
+      </nav>
+    </header>
+
+    <div class="toolbar">
+      <div class="grp"><label>Provider</label><select id="providerSelect"></select></div>
+      <div class="grp"><label>Model</label><select id="modelSelect"></select></div>
+      <span class="pill" id="localPill" style="display:none;">local</span>
+      <span class="spacer"></span>
+      <button class="ghost" id="resetBtn" type="button">Clear chat</button>
     </div>
 
-    <!-- chat -->
-    <div class="card">
-      <h3>Chat</h3>
+    <div class="chat">
       <div id="messages"></div>
       <form class="composer" id="composer">
-        <input type="text" id="userInput" placeholder="Type a message..." autocomplete="off" />
-        <button type="submit" id="sendBtn">Send</button>
+        <button type="button" id="slashBtn" title="Quick actions (or type /)">/</button>
+        <div class="slash-menu" id="slashMenu"></div>
+        <input type="text" id="userInput" placeholder="Ask anything, or type / for actions" autocomplete="off" />
+        <button type="submit" id="sendBtn" title="Send">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+               stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
       </form>
     </div>
 
-    <!-- analyze -->
-    <div class="card">
-      <h3>Analyze item description</h3>
-      <p style="font-size:12px;color:#888;margin-bottom:8px;">
-        Paste an item description and the LLM will return structured JSON
-        (categories, tags, sentiment, summary). Uses the same provider/model selected above.
-      </p>
-      <textarea id="analyzeInput" placeholder='e.g. "Wireless mouse, very responsive and great battery life."'></textarea>
-      <button class="analyze-btn" id="analyzeBtn" type="button">Analyze</button>
-      <div id="analyzeResult"></div>
-    </div>
+    <details class="extra">
+      <summary>Analyze an item description</summary>
+      <div class="body">
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:9px;">
+          Paste an item description to extract structured JSON (categories, tags, sentiment, summary).
+          Uses the provider/model selected above.</p>
+        <textarea id="analyzeInput" placeholder='e.g. "Wireless mouse, very responsive and great battery life."'></textarea>
+        <button class="analyze-btn" id="analyzeBtn" type="button">Analyze</button>
+        <div id="analyzeResult"></div>
+      </div>
+    </details>
   </div>
 
 <script>
 const API = window.location.origin;
+let catalog=null, currentProvider=null, currentModel=null;
+let convoState=null, pendingId=null, renderedSteps=0, busy=false;
 
-let history = [];          // [{role, content}]
-let catalog = null;        // /llm/models response
-let currentProvider = null;
-let currentModel = null;
+const $providers=document.getElementById("providerSelect");
+const $models=document.getElementById("modelSelect");
+const $messages=document.getElementById("messages");
+const $input=document.getElementById("userInput");
+const $sendBtn=document.getElementById("sendBtn");
+const $slashBtn=document.getElementById("slashBtn");
+const $slashMenu=document.getElementById("slashMenu");
+const $localPill=document.getElementById("localPill");
 
-const $providers = document.getElementById("providerSelect");
-const $models    = document.getElementById("modelSelect");
-const $messages  = document.getElementById("messages");
-const $input     = document.getElementById("userInput");
-const $sendBtn   = document.getElementById("sendBtn");
+const escapeHtml=s=>(s+"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const scroll=()=>{$messages.scrollTop=$messages.scrollHeight;};
 
-// --- model picker ---
-async function loadModels() {
-  const res = await fetch(API + "/llm/models");
-  catalog = await res.json();
-  currentProvider = catalog.default_provider;
-
-  $providers.innerHTML = "";
-  for (const [key, info] of Object.entries(catalog.providers)) {
-    const opt = document.createElement("option");
-    opt.value = key;
-    opt.textContent = info.label;
-    if (key === currentProvider) opt.selected = true;
-    $providers.appendChild(opt);
+/* ---------- model picker ---------- */
+async function loadModels(){
+  catalog=await (await fetch(API+"/llm/models")).json();
+  currentProvider=catalog.providers.ollama?"ollama":catalog.default_provider;
+  $providers.innerHTML="";
+  for(const [k,info] of Object.entries(catalog.providers)){
+    const o=document.createElement("option");o.value=k;o.textContent=info.label;
+    if(k===currentProvider)o.selected=true;$providers.appendChild(o);
   }
   refreshModels();
 }
-
-function refreshModels() {
-  currentProvider = $providers.value;
-  const info = catalog.providers[currentProvider];
-  $models.innerHTML = "";
-  for (const m of info.models) {
-    const opt = document.createElement("option");
-    opt.value = m;
-    opt.textContent = m;
-    if (m === info.default) opt.selected = true;
-    $models.appendChild(opt);
+function refreshModels(){
+  currentProvider=$providers.value;
+  const info=catalog.providers[currentProvider];
+  $models.innerHTML="";
+  for(const m of info.models){
+    const o=document.createElement("option");o.value=m;o.textContent=m;
+    if(m===info.default)o.selected=true;$models.appendChild(o);
   }
-  currentModel = info.default;
+  currentModel=info.default;
+  $localPill.style.display=currentProvider==="ollama"?"inline-block":"none";
 }
+$providers.addEventListener("change",()=>{refreshModels();note(`Switched to ${currentProvider} / ${currentModel}`);});
+$models.addEventListener("change",()=>{currentModel=$models.value;});
 
-$providers.addEventListener("change", () => {
-  refreshModels();
-  addSystemNote(`Switched to ${currentProvider} / ${currentModel}`);
-});
-$models.addEventListener("change", () => {
-  currentModel = $models.value;
-  addSystemNote(`Model: ${currentModel}`);
-});
-
-// --- chat rendering ---
-function addMessage(role, text) {
-  const div = document.createElement("div");
-  div.className = "msg " + role;
-  div.textContent = text;
-  $messages.appendChild(div);
-  $messages.scrollTop = $messages.scrollHeight;
-  return div;
+/* ---------- rendering ---------- */
+function addMessage(role,text){
+  const row=document.createElement("div");row.className="row "+role;
+  if(role==="assistant"){const a=document.createElement("div");a.className="avatar";a.textContent="✦";row.appendChild(a);}
+  const b=document.createElement("div");b.className="bubble "+role;b.textContent=text;
+  row.appendChild(b);$messages.appendChild(row);scroll();return b;
 }
-function addSystemNote(text) {
-  const div = document.createElement("div");
-  div.className = "msg system-note";
-  div.textContent = text;
-  $messages.appendChild(div);
-  $messages.scrollTop = $messages.scrollHeight;
+function note(t){const d=document.createElement("div");d.className="note";d.textContent=t;$messages.appendChild(d);scroll();}
+function addError(t){const d=document.createElement("div");d.className="errline";d.textContent="⚠ "+t;$messages.appendChild(d);scroll();}
+function showTyping(){
+  const row=document.createElement("div");row.className="row assistant";row.id="typingRow";
+  row.innerHTML=`<div class="avatar">✦</div><div class="bubble assistant typing"><span></span><span></span><span></span></div>`;
+  $messages.appendChild(row);scroll();
 }
-function addError(text) {
-  const div = document.createElement("div");
-  div.className = "msg error";
-  div.textContent = "Error: " + text;
-  $messages.appendChild(div);
-  $messages.scrollTop = $messages.scrollHeight;
+function hideTyping(){const r=document.getElementById("typingRow");if(r)r.remove();}
+
+function activityMeta(step){
+  const t=step.tool, i=step.input||{}, o=step.output||"";
+  if(t==="search_items"){
+    const q=i.query??"";const none=/no items found|collection is empty/i.test(o);
+    const m=o.match(/Found (\d+) item/i);
+    return {ico:"🔍",c:"#3b82f6",sum:none?`Searched “${q}” — no matches`
+      :`Searched “${q}” — ${m?m[1]:""} result${m&&m[1]!=="1"?"s":""}`};
+  }
+  if(t==="create_item")  return {ico:"＋",c:"#16a34a",sum:(/created item/i.test(o)?`Created “${i.name??""}”`:`Create “${i.name??""}”`)};
+  if(t==="delete_item")  return {ico:"🗑",c:"#ef4444",sum:`Deleted item`};
+  if(t==="query_knowledge_base") return {ico:"📚",c:"#8b5cf6",sum:`Looked up “${i.question??""}”`};
+  if(t==="predict_flower")return {ico:"🌸",c:"#ec4899",sum:`Predicted iris species`};
+  if(t==="ask_user")     return {ico:"？",c:"#f59e0b",sum:`Asked “${i.question??""}”`};
+  return {ico:"🔧",c:"#6b7280",sum:t};
 }
+function addActivity(step){
+  const m=activityMeta(step);
+  const row=document.createElement("div");row.className="row activity-row";
+  const w=document.createElement("div");w.className="activity";
+  w.innerHTML=`<div class="activity-head">
+      <span class="ico" style="background:${m.c}1a;color:${m.c}">${m.ico}</span>
+      <span class="sum">${escapeHtml(m.sum)}</span><span class="chev">›</span></div>
+    <div class="activity-body">
+      <div class="kv"><span class="kvl">Arguments</span><pre>${escapeHtml(JSON.stringify(step.input||{},null,2))}</pre></div>
+      <div class="kv"><span class="kvl">Result</span><pre>${escapeHtml(step.output||"")}</pre></div></div>`;
+  w.querySelector(".activity-head").addEventListener("click",()=>w.classList.toggle("open"));
+  row.appendChild(w);$messages.appendChild(row);scroll();
+}
+function renderNewSteps(steps){if(!steps)return;for(let k=renderedSteps;k<steps.length;k++)addActivity(steps[k]);renderedSteps=steps.length;}
 
-document.getElementById("composer").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const text = $input.value.trim();
-  if (!text) return;
+function lockCard(c){c.querySelectorAll("button,input").forEach(e=>e.disabled=true);c.style.opacity=".72";}
+function addConfirm(data){
+  const p=data.pending,i=p.input||{};
+  const row=document.createElement("div");row.className="row activity-row";
+  const c=document.createElement("div");c.className="action-card confirm";
+  let fields="";
+  if(p.tool==="create_item"){
+    fields=`<div class="afield"><span>Name</span><b>${escapeHtml(i.name||"(unnamed)")}</b></div>`;
+    if(i.description)fields+=`<div class="afield"><span>Description</span><b>${escapeHtml(i.description)}</b></div>`;
+  }else if(p.tool==="delete_item"){
+    fields=`<div class="afield"><span>Item id</span><b>${escapeHtml(i.item_id||"")}</b></div>`;
+  }else fields=`<pre>${escapeHtml(JSON.stringify(i,null,2))}</pre>`;
+  const verb=p.tool==="delete_item"?"delete this item":"add this item";
+  c.innerHTML=`<div class="ac-title"><span class="ac-ico">✋</span>Confirm before I ${verb}</div>
+    <div class="ac-fields">${fields}</div>
+    <div class="ac-actions"><button class="btn btn-approve">Approve</button><button class="btn btn-deny">Deny</button></div>`;
+  c.querySelector(".btn-approve").onclick=()=>{lockCard(c);callAgent({state:convoState,approvals:{[pendingId]:true}});};
+  c.querySelector(".btn-deny").onclick=()=>{lockCard(c);callAgent({state:convoState,approvals:{[pendingId]:false}});};
+  row.appendChild(c);$messages.appendChild(row);scroll();
+}
+function addClarify(data){
+  const row=document.createElement("div");row.className="row activity-row";
+  const c=document.createElement("div");c.className="action-card clarify";
+  c.innerHTML=`<div class="ac-title"><span class="ac-ico">💬</span>${escapeHtml(data.question)}</div>`;
 
-  $input.value = "";
-  $sendBtn.disabled = true;
-  addMessage("user", text);
-
-  const typing = document.createElement("div");
-  typing.className = "typing";
-  typing.textContent = "Assistant is typing...";
-  $messages.appendChild(typing);
-  $messages.scrollTop = $messages.scrollHeight;
-
-  try {
-    const res = await fetch(API + "/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: text,
-        conversation_history: history,
-        provider: $providers.value,
-        model: $models.value,
-      }),
+  // Multi-field form: collect every missing required value at once.
+  if(data.fields && data.fields.length){
+    const form=document.createElement("div");form.className="ac-form";
+    const inputs={};
+    data.fields.forEach(f=>{
+      const fr=document.createElement("div");fr.className="ff-row";
+      const lab=document.createElement("label");lab.textContent=f.label||f.name;
+      const inp=document.createElement("input");
+      inp.type=(f.type==="number")?"number":"text";
+      if(f.type==="number"){inp.step="any";inp.placeholder="e.g. 5.1";}
+      inp.addEventListener("input",()=>inp.classList.remove("ff-bad"));
+      inputs[f.name]=inp;
+      fr.appendChild(lab);fr.appendChild(inp);form.appendChild(fr);
     });
-    typing.remove();
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      addError(err.detail || ("HTTP " + res.status));
-    } else {
-      const data = await res.json();
-      history = data.conversation_history;
-      addMessage("assistant", data.reply);
-    }
-  } catch (err) {
-    typing.remove();
-    addError(err.message || "request failed");
-  } finally {
-    $sendBtn.disabled = false;
-    $input.focus();
-  }
-});
-
-document.getElementById("resetBtn").addEventListener("click", () => {
-  history = [];
-  $messages.innerHTML = "";
-  addSystemNote("Conversation reset.");
-});
-
-// --- analyze panel ---
-document.getElementById("analyzeBtn").addEventListener("click", async () => {
-  const content = document.getElementById("analyzeInput").value.trim();
-  const $result = document.getElementById("analyzeResult");
-  const $btn = document.getElementById("analyzeBtn");
-  if (!content) {
-    $result.innerHTML = '<div style="color:#888;">Enter something to analyze first.</div>';
+    const go=()=>{
+      const vals={};let ok=true;
+      data.fields.forEach(f=>{
+        const v=inputs[f.name].value.trim();
+        if(!v && !f.optional){ok=false;inputs[f.name].classList.add("ff-bad");}
+        else if(v) vals[f.name]=v;
+      });
+      if(!ok)return;
+      lockCard(c);callAgent({state:convoState,field_values:vals});
+    };
+    Object.values(inputs).forEach(inp=>inp.addEventListener("keydown",
+      e=>{if(e.key==="Enter"){e.preventDefault();go();}}));
+    const submit=document.createElement("button");
+    submit.className="btn btn-approve";submit.textContent="Submit";submit.onclick=go;
+    const act=document.createElement("div");act.className="ac-actions";act.appendChild(submit);
+    c.appendChild(form);c.appendChild(act);
+    row.appendChild(c);$messages.appendChild(row);scroll();
+    const first=Object.values(inputs)[0];if(first)first.focus();
     return;
   }
-  $btn.disabled = true;
-  $result.innerHTML = '<div style="color:#888;">Analyzing...</div>';
 
-  try {
-    const res = await fetch(API + "/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content,
-        provider: $providers.value,
-        model: $models.value,
-      }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      $result.innerHTML = `<div style="color:#dc2626;">Error: ${err.detail || res.status}</div>`;
-    } else {
-      const data = await res.json();
-      $result.innerHTML = renderAnalysis(data);
-    }
-  } catch (err) {
-    $result.innerHTML = `<div style="color:#dc2626;">Error: ${err.message}</div>`;
-  } finally {
-    $btn.disabled = false;
-  }
-});
-
-function renderAnalysis(data) {
-  const cats = (data.categories || []).map(c => `<span class="badge">${c}</span>`).join("");
-  const tags = (data.tags || []).map(t => `<span class="badge tag">${t}</span>`).join("");
-  const sentClass = "sent-" + (data.sentiment || "neutral");
-  return `
-    <span class="field-label">Categories</span><div>${cats || "<em>none</em>"}</div>
-    <span class="field-label">Tags</span><div>${tags || "<em>none</em>"}</div>
-    <span class="field-label">Sentiment</span>
-      <div><span class="badge ${sentClass}">${data.sentiment}</span></div>
-    <span class="field-label">Summary</span><div>${data.summary || ""}</div>
-    <pre class="raw">${JSON.stringify(data, null, 2)}</pre>
-  `;
+  // Single free-text question (+ optional quick-pick buttons) — model ask_user.
+  const opts=document.createElement("div");opts.className="ac-actions";
+  (data.options||[]).forEach(o=>{const b=document.createElement("button");b.className="btn btn-chip";b.textContent=o;
+    b.onclick=()=>{lockCard(c);callAgent({state:convoState,user_input:o});};opts.appendChild(b);});
+  const ir=document.createElement("div");ir.className="ac-input";
+  const inp=document.createElement("input");inp.placeholder="Type your answer…";
+  const send=document.createElement("button");send.className="btn btn-approve";send.textContent="Send";
+  const go=()=>{const v=inp.value.trim();if(!v)return;lockCard(c);callAgent({state:convoState,user_input:v});};
+  send.onclick=go;inp.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();go();}});
+  ir.appendChild(inp);ir.appendChild(send);if((data.options||[]).length)c.appendChild(opts);c.appendChild(ir);
+  row.appendChild(c);$messages.appendChild(row);scroll();inp.focus();
 }
 
-loadModels().then(() => addSystemNote("Pick a provider/model above and start chatting."));
+function setBusy(b){busy=b;$sendBtn.disabled=b;$input.disabled=b;$slashBtn.disabled=b;}
+
+/* ---------- agent calls ---------- */
+async function callAgent(payload){
+  setBusy(true);showTyping();
+  try{
+    const res=await fetch(API+"/agent",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(Object.assign({provider:$providers.value,model:$models.value},payload))});
+    hideTyping();
+    if(!res.ok){const e=await res.json().catch(()=>({detail:res.statusText}));addError(e.detail||("HTTP "+res.status));setBusy(false);return;}
+    handleAgentResponse(await res.json());
+  }catch(err){hideTyping();addError(err.message||"request failed");setBusy(false);}
+}
+function handleAgentResponse(d){
+  renderNewSteps(d.steps);
+  if(d.status==="completed"){
+    convoState=d.state;pendingId=null;addMessage("assistant",d.result);
+    if(d.limit_reached)note("stopped at the step limit");
+    setBusy(false);$input.focus();
+  }else if(d.status==="needs_confirmation"){
+    // keep the conversation state, lock the composer until the user decides
+    convoState=d.state;pendingId=d.pending.id;addConfirm(d);setBusy(true);
+  }else if(d.status==="needs_input"){
+    convoState=d.state;pendingId=d.pending.id;addClarify(d);setBusy(true);
+  }else{addError("Unexpected status: "+d.status);setBusy(false);}
+}
+
+document.getElementById("composer").addEventListener("submit",e=>{
+  e.preventDefault();
+  if(menuOpen){const items=slashItems();if(items.length){selectAction(ACTIONS.find(a=>a.cmd===items[activeIdx].dataset.cmd));return;}}
+  const text=$input.value.trim();if(!text||busy)return;
+  $input.value="";addMessage("user",text);
+  callAgent({message:text,state:convoState});   // carry conversation memory
+});
+document.getElementById("resetBtn").addEventListener("click",()=>{
+  convoState=null;pendingId=null;renderedSteps=0;$messages.innerHTML="";setBusy(false);
+  note("New conversation.");
+});
+
+/* ---------- slash quick actions ---------- */
+const ACTIONS=[
+  {cmd:"/list",desc:"List everything you have",template:"List all of my items.",send:true},
+  {cmd:"/search",desc:"Search your items by keyword",template:"Search my items for "},
+  {cmd:"/ask",desc:"Ask about your items (grounded RAG)",template:"What do I have about "},
+  {cmd:"/create",desc:"Create a new item (asks to confirm)",template:"Create an item called "},
+  {cmd:"/predict",desc:"Predict an iris flower species",template:"Predict an iris flower species.",send:true},
+  {cmd:"/clear",desc:"Clear the conversation",action:"reset"},
+];
+let menuOpen=false,activeIdx=0;
+const slashItems=()=>[...$slashMenu.querySelectorAll(".slash-item")];
+function openMenu(filter=""){
+  const f=filter.replace(/^\//,"").toLowerCase();
+  const matches=ACTIONS.filter(a=>f===""||a.cmd.slice(1).startsWith(f));
+  if(!matches.length){$slashMenu.innerHTML='<div class="slash-empty">No matching action</div>';}
+  else{
+    activeIdx=0;
+    $slashMenu.innerHTML='<div class="slash-title">Quick actions</div>'+matches.map((a,i)=>
+      `<div class="slash-item${i===0?' active':''}" data-cmd="${a.cmd}">
+         <div class="cmd">${a.cmd}</div><div class="desc">${a.desc}</div></div>`).join("");
+    slashItems().forEach((el,idx)=>{el.addEventListener("mouseenter",()=>setActive(idx));
+      el.addEventListener("click",()=>selectAction(ACTIONS.find(a=>a.cmd===el.dataset.cmd)));});
+  }
+  $slashMenu.classList.add("open");menuOpen=true;
+}
+function closeMenu(){$slashMenu.classList.remove("open");menuOpen=false;}
+function setActive(i){const it=slashItems();if(!it.length)return;activeIdx=(i+it.length)%it.length;
+  it.forEach((el,idx)=>el.classList.toggle("active",idx===activeIdx));}
+function selectAction(a){
+  closeMenu();if(!a)return;
+  if(a.action==="reset"){document.getElementById("resetBtn").click();$input.value="";return;}
+  $input.value=a.template;
+  if(a.send){document.getElementById("composer").requestSubmit();}
+  else{$input.focus();$input.setSelectionRange($input.value.length,$input.value.length);}
+}
+$slashBtn.addEventListener("click",()=>{menuOpen?closeMenu():openMenu($input.value.startsWith("/")?$input.value:"");});
+$input.addEventListener("input",()=>{const v=$input.value;
+  if(v.startsWith("/")&&!v.includes(" "))openMenu(v);else if(menuOpen)closeMenu();});
+$input.addEventListener("keydown",e=>{
+  if(!menuOpen)return;
+  if(e.key==="ArrowDown"){e.preventDefault();setActive(activeIdx+1);}
+  else if(e.key==="ArrowUp"){e.preventDefault();setActive(activeIdx-1);}
+  else if(e.key==="Escape"){closeMenu();}
+});
+document.addEventListener("click",e=>{if(menuOpen&&!document.getElementById("composer").contains(e.target))closeMenu();});
+
+/* ---------- analyze panel ---------- */
+document.getElementById("analyzeBtn").addEventListener("click",async()=>{
+  const content=document.getElementById("analyzeInput").value.trim();
+  const $r=document.getElementById("analyzeResult");const $b=document.getElementById("analyzeBtn");
+  if(!content){$r.innerHTML='<div style="color:var(--muted);">Enter something to analyze first.</div>';return;}
+  $b.disabled=true;$r.innerHTML='<div style="color:var(--muted);">Analyzing…</div>';
+  try{
+    const res=await fetch(API+"/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({content,provider:$providers.value,model:$models.value})});
+    if(!res.ok){const e=await res.json().catch(()=>({detail:res.statusText}));
+      $r.innerHTML=`<div style="color:var(--danger);">Error: ${e.detail||res.status}</div>`;}
+    else{$r.innerHTML=renderAnalysis(await res.json());}
+  }catch(err){$r.innerHTML=`<div style="color:var(--danger);">Error: ${err.message}</div>`;}
+  finally{$b.disabled=false;}
+});
+function renderAnalysis(d){
+  const cats=(d.categories||[]).map(c=>`<span class="badge">${c}</span>`).join("");
+  const tags=(d.tags||[]).map(t=>`<span class="badge tag">${t}</span>`).join("");
+  return `<span class="field-label">Categories</span><div>${cats||"<em>none</em>"}</div>
+    <span class="field-label">Tags</span><div>${tags||"<em>none</em>"}</div>
+    <span class="field-label">Sentiment</span><div><span class="badge sent-${d.sentiment||'neutral'}">${d.sentiment}</span></div>
+    <span class="field-label">Summary</span><div>${d.summary||""}</div>
+    <pre class="raw">${JSON.stringify(d,null,2)}</pre>`;
+}
+
+loadModels().then(()=>note("Hi! Chat with me normally, or type / for quick actions."));
 </script>
 </body>
 </html>

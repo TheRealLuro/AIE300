@@ -1,9 +1,13 @@
 import os
+import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import joblib
 import numpy as np
+
+# Log through uvicorn's logger so model messages match the server's clean format.
+logger = logging.getLogger("uvicorn")
 
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
@@ -92,7 +96,7 @@ class ModelService:
                 total_loss += loss.item()
 
             if epoch % 20 == 0:
-                print(f"Epoch {epoch}: Loss {total_loss/len(loader):.4f}")
+                logger.info("Epoch %d: loss %.4f", epoch, total_loss / len(loader))
 
         self.save_model()
 
@@ -103,18 +107,19 @@ class ModelService:
         torch.save(self.model.state_dict(), self.model_path)
         joblib.dump(self.scaler, self.scaler_path)
 
-        print("Model saved!")
+        logger.info("Iris model trained and saved.")
 
 
 
     def load_model(self):
-        # Saved as pk1
-        self.model.load_state_dict(torch.load(self.model_path))
+        # Saved as pk1. weights_only=True loads just the tensor state_dict and
+        # silences torch's pickle FutureWarning (we control the file).
+        self.model.load_state_dict(torch.load(self.model_path, weights_only=True))
         self.model.eval()
 
         self.scaler = joblib.load(self.scaler_path)
 
-        print("Model loaded!")
+        logger.info("Iris model loaded.")
 
 
     def load_or_train(self):
