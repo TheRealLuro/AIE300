@@ -15,33 +15,70 @@ They all share the same FastAPI app and the same plain HTML/JS frontend.
 
 ## Quick start
 
-1. Install Docker Desktop and make sure it's running.
-2. Copy the env template and fill in the providers you plan to use:
+The app needs **MongoDB** and an **LLM provider**. The AI agent and RAG default to a **local Ollama**, but you can switch to OpenAI/Anthropic from the dropdown per request.
 
-   ```
-   cp .env.example .env
-   ```
+### 0. Configure providers
 
-   At minimum, set one of `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` (or leave both blank if you only want Ollama). Pick a default in `DEFAULT_LLM_PROVIDER`.
+```
+cp .env.example .env
+```
 
-3. Start everything:
+Fill in only what you'll use. For the cloud providers set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`. For the **local default**, install [Ollama](https://ollama.com), make sure it's running (`http://localhost:11434`), and pull the two models the agent + RAG use:
 
-   ```
-   docker-compose up --build
-   ```
+```
+ollama pull llama3.1          # agent chat model (tool-capable; chains tools reliably)
+ollama pull nomic-embed-text  # embeddings for /ask + the RAG tool
+```
 
-4. Open the frontend:
+Then run it one of two ways.
 
-   | Page | URL |
-   |------|-----|
-   | Items   | http://localhost:9878 |
-   | AI Chat | http://localhost:9878/chat-page |
-   | Flower Predictor | http://localhost:9878/predict-page |
-   | Swagger / API docs | http://localhost:9878/docs |
+### Option A — Everything in Docker (simplest)
 
-   (The container listens on internal port 8000; `docker-compose.yml` publishes it on host port 9878.)
+```
+docker-compose up --build
+```
 
-To stop: `docker-compose down`. Mongo data persists in the `mongodata` named volume so items survive restarts.
+| Page | URL |
+|------|-----|
+| Items | http://localhost:9878 |
+| AI Agent | http://localhost:9878/chat-page |
+| Flower Predictor | http://localhost:9878/predict-page |
+| API docs | http://localhost:9878/docs |
+
+Stop with `docker-compose down`. Mongo data persists in the `mongodata` volume.
+
+> **Heads-up for a local (host) Ollama:** the `web` container reaches your machine at `host.docker.internal`, but Ollama only answers that if it listens on all interfaces. Set `OLLAMA_HOST=0.0.0.0` for the Ollama service (keep `OLLAMA_BASE_URL=http://host.docker.internal:11434`). If Ollama is bound to `127.0.0.1` (its default), the container can't reach it — either set `OLLAMA_HOST=0.0.0.0`, point the agent at OpenAI/Anthropic, or use **Option B**.
+
+### Option B — App on the host + Mongo in Docker (recommended with local Ollama)
+
+Runs the API directly on your machine, so it reaches a `localhost`-bound Ollama with zero extra config.
+
+```
+# 1. database
+docker run -d --name aie300-mongo -p 27017:27017 mongo:7
+
+# 2. python deps (first time only)
+pip install -r requirements.txt
+
+# 3. run the API (pick any free port; 8000 shown)
+uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+| Page | URL |
+|------|-----|
+| Items | http://localhost:8000 |
+| AI Agent | http://localhost:8000/chat-page |
+| Flower Predictor | http://localhost:8000/predict-page |
+| API docs | http://localhost:8000/docs |
+
+To stop: `Ctrl+C` the uvicorn process, then `docker rm -f aie300-mongo`. (Items live in the container; add `-v aie300-mongo-data:/data/db` to the `docker run` if you want them to persist.)
+
+### Sanity checks (no web server needed)
+
+```
+python function_calling_demo.py --provider ollama --model llama3.1   # Part 1: tool-calling trace
+python test_llm.py --provider ollama --model llama3.1                # provider smoke test
+```
 
 ---
 
@@ -181,7 +218,7 @@ It prints the provider, model, and the reply. Exits non-zero if the provider is 
 | POST | `/analyze`    | Extracts structured JSON from an item description. Body: `{content, provider?, model?}`. Returns `{categories, tags, sentiment, summary}`. |
 | GET  | `/chat-page`  | Serves the chat + analyze UI. |
 
-`provider` and `model` are optional. If omitted, the server uses `DEFAULT_LLM_PROVIDER` and that provider's default model from the catalog (e.g. `gpt-4o-mini`, `claude-haiku-4-5`, `llama3.2`).
+`provider` and `model` are optional. If omitted, the server uses `DEFAULT_LLM_PROVIDER` and that provider's default model from the catalog (e.g. `gpt-4o-mini`, `claude-haiku-4-5`, `llama3.1`).
 
 ### Switching models from the API
 
